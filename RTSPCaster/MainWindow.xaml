@@ -1,0 +1,91 @@
+﻿<Window x:Class="RTSPCaster.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:RTSPCaster"
+        xmlns:vm="clr-namespace:RTSPCaster.ViewModels"
+        mc:Ignorable="d"
+        Title="RTSP Caster" Height="640" Width="1100">
+    <DockPanel>
+        <ToolBar DockPanel.Dock="Top">
+            <Button Content="파일 추가" Command="{Binding AddFileCommand}" Padding="8,2"/>
+            <Separator/>
+            <Button Content="전체 시작" Command="{Binding StartAllCommand}" Padding="8,2"/>
+            <Button Content="전체 중지" Command="{Binding StopAllCommand}" Padding="8,2"/>
+            <Separator/>
+            <TextBlock Text="MediaMTX Host:" VerticalAlignment="Center" Margin="4,0"/>
+            <TextBox Text="{Binding MediaMtxHost}" Width="110"/>
+            <TextBlock Text="Port:" VerticalAlignment="Center" Margin="4,0"/>
+            <TextBox Text="{Binding MediaMtxPort}" Width="60"/>
+            <Button Content="MediaMTX 연결 확인" Command="{Binding CheckMediaMtxCommand}" Margin="6,0,0,0"/>
+            <Separator/>
+            <TextBlock Text="경로 템플릿:" VerticalAlignment="Center" Margin="4,0"/>
+            <TextBox Text="{Binding BulkPathTemplate}" Width="160"
+                     ToolTip="{}{index} 또는 {index:D3}(001), {name}=채널명. 예) stream_{index:D3}"/>
+            <Button Content="Help" Command="{Binding ShowPathTemplateHelpCommand}"
+                    ToolTip="경로 템플릿 사용법 보기" Margin="4,0,0,0" Padding="6,2"/>
+            <Button Content="전체 경로 적용" Command="{Binding ApplyPathToAllCommand}"/>
+            <TextBlock Text="상태:" VerticalAlignment="Center" Margin="10,0,4,0"/>
+            <TextBlock Text="{Binding MediaMtxStatus}" VerticalAlignment="Center" FontWeight="Bold"/>
+        </ToolBar>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="200"/>
+            </Grid.RowDefinitions>
+
+            <DataGrid Grid.Row="0" ItemsSource="{Binding Channels}" AutoGenerateColumns="False"
+                      CanUserAddRows="False" HeadersVisibility="Column">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="채널" Binding="{Binding Name}" Width="140" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="파일" Binding="{Binding FileName}" Width="200" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="코덱(V/A)" Binding="{Binding Codecs}" Width="120" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="호환성" Binding="{Binding CompatibilityText}" Width="200" IsReadOnly="True"/>
+                    <DataGridTemplateColumn Header="RTSP URL (경로 편집 가능)" Width="320">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding RtspUrlPrefix}" VerticalAlignment="Center" Foreground="Gray"/>
+                                    <TextBox Text="{Binding RtspPath, UpdateSourceTrigger=LostFocus}"
+                                             MinWidth="120" VerticalAlignment="Center"/>
+                                    <Button Content="📋" Command="{Binding CopyUrlCommand}"
+                                            ToolTip="URL을 클립보드에 복사"
+                                            Margin="4,0,0,0" Padding="6,0" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="상태" Binding="{Binding Status}" Width="90" IsReadOnly="True"/>
+                    <DataGridTemplateColumn Header="변환 진행률" Width="120" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ProgressBar Minimum="0" Maximum="100" Value="{Binding ConversionProgress}" Height="16"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTemplateColumn Header="동작" Width="220" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="시작" Command="{Binding StartCommand}" Margin="2"/>
+                                    <Button Content="중지" Command="{Binding StopCommand}" Margin="2"/>
+                                    <Button Content="삭제" Command="{Binding RemoveCommand}" Margin="2"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" Background="Gray"/>
+
+            <GroupBox Grid.Row="2" Header="로그">
+                <ListBox x:Name="LogList" ItemsSource="{Binding Logs}" FontFamily="Consolas" FontSize="12"
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+            </GroupBox>
+        </Grid>
+    </DockPanel>
+</Window>
