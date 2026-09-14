@@ -7,6 +7,12 @@
         xmlns:vm="clr-namespace:RTSPCaster.ViewModels"
         mc:Ignorable="d"
         Title="RTSP Caster" Height="640" Width="1100">
+    <Window.CommandBindings>
+        <CommandBinding Command="{x:Static local:MainWindow.CopyLogsCommand}" Executed="CopyLogs_Executed" />
+    </Window.CommandBindings>
+    <Window.InputBindings>
+        <KeyBinding Command="{x:Static local:MainWindow.CopyLogsCommand}" Gesture="Ctrl+C" />
+    </Window.InputBindings>
     <DockPanel>
         <ToolBar DockPanel.Dock="Top">
             <Button Content="파일 추가" Command="{Binding AddFileCommand}" Padding="8,2"/>
@@ -84,7 +90,13 @@
 
             <GroupBox Grid.Row="2" Header="로그">
                 <ListBox x:Name="LogList" ItemsSource="{Binding Logs}" FontFamily="Consolas" FontSize="12"
-                         ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+                         ScrollViewer.HorizontalScrollBarVisibility="Auto" SelectionMode="Extended">
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="복사" Click="CopyLogs_Click" ToolTip="선택 항목 또는 전체 로그를 클립보드로 복사합니다."/>
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+                </ListBox>
             </GroupBox>
         </Grid>
     </DockPanel>
