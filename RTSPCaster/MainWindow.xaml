@@ -14,27 +14,44 @@
         <KeyBinding Command="{x:Static local:MainWindow.CopyLogsCommand}" Gesture="Ctrl+C" />
     </Window.InputBindings>
     <DockPanel>
-        <ToolBar DockPanel.Dock="Top">
-            <Button Content="파일 추가" Command="{Binding AddFileCommand}" Padding="8,2"/>
-            <Separator/>
-            <Button Content="전체 시작" Command="{Binding StartAllCommand}" Padding="8,2"/>
-            <Button Content="전체 중지" Command="{Binding StopAllCommand}" Padding="8,2"/>
-            <Separator/>
-            <TextBlock Text="MediaMTX Host:" VerticalAlignment="Center" Margin="4,0"/>
-            <TextBox Text="{Binding MediaMtxHost}" Width="110"/>
-            <TextBlock Text="Port:" VerticalAlignment="Center" Margin="4,0"/>
-            <TextBox Text="{Binding MediaMtxPort}" Width="60"/>
-            <Button Content="MediaMTX 연결 확인" Command="{Binding CheckMediaMtxCommand}" Margin="6,0,0,0"/>
-            <Separator/>
-            <TextBlock Text="경로 템플릿:" VerticalAlignment="Center" Margin="4,0"/>
-            <TextBox Text="{Binding BulkPathTemplate}" Width="160"
-                     ToolTip="{}{index} 또는 {index:D3}(001), {name}=채널명. 예) stream_{index:D3}"/>
-            <Button Content="Help" Command="{Binding ShowPathTemplateHelpCommand}"
-                    ToolTip="경로 템플릿 사용법 보기" Margin="4,0,0,0" Padding="6,2"/>
-            <Button Content="전체 경로 적용" Command="{Binding ApplyPathToAllCommand}"/>
-            <TextBlock Text="상태:" VerticalAlignment="Center" Margin="10,0,4,0"/>
-            <TextBlock Text="{Binding MediaMtxStatus}" VerticalAlignment="Center" FontWeight="Bold"/>
-        </ToolBar>
+        <Border DockPanel.Dock="Top" BorderBrush="#22000000" BorderThickness="0,0,0,1" Padding="8,6">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <WrapPanel Grid.Row="0" VerticalAlignment="Center">
+                    <Button Content="파일 추가" Command="{Binding AddFileCommand}" Padding="8,2" Margin="0,0,6,0"/>
+                    <Button Content="전체 시작" Command="{Binding StartAllCommand}" Padding="8,2" Margin="0,0,6,0"/>
+                    <Button Content="전체 중지" Command="{Binding StopAllCommand}" Padding="8,2" Margin="0,0,12,0"/>
+
+                    <GroupBox Header="MediaMTX" Margin="0,0,8,0" Padding="6,4,6,6">
+                        <StackPanel>
+                            <WrapPanel VerticalAlignment="Center" ItemHeight="28">
+                                <TextBlock Text="Host:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBox Text="{Binding MediaMtxHost}" Width="110" Margin="0,0,6,0"/>
+                                <TextBlock Text="Port:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBox Text="{Binding MediaMtxPort}" Width="60" Margin="0,0,6,0"/>
+                                <Button Content="연결 확인" Command="{Binding CheckMediaMtxCommand}"/>
+                            </WrapPanel>
+                            <TextBlock Text="{Binding MediaMtxStatus}" Margin="0,4,0,0" FontWeight="Bold"/>
+                        </StackPanel>
+                    </GroupBox>
+                </WrapPanel>
+
+                <Grid Grid.Row="1" Margin="0,6,0,0">
+                    <WrapPanel VerticalAlignment="Center" ItemHeight="28">
+                        <TextBlock Text="RTSP 템플릿:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                        <TextBox Text="{Binding BulkRtspTemplate}" Width="430"
+                                 ToolTip="rtsp://{host}:{port}/stream_{index} 형태. {host},{port},{index},{index:D3},{name} 지원" Margin="0,0,4,0"/>
+                        <Button Content="Help" Command="{Binding ShowRtspTemplateHelpCommand}"
+                                ToolTip="RTSP 템플릿 사용법 보기" Margin="0,0,4,0" Padding="6,2"/>
+                        <Button Content="전체 적용" Command="{Binding ApplyRtspTemplateToAllCommand}"/>
+                    </WrapPanel>
+                </Grid>
+            </Grid>
+        </Border>
 
         <Grid>
             <Grid.RowDefinitions>

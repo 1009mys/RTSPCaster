@@ -133,6 +133,17 @@ VALUES($n,$v,$r,$h,$p,$c) RETURNING Id;";
         cmd.ExecuteNonQuery();
     }
 
+    public void UpdateChannelRtspEndpoint(int channelId, string host, int port)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE Channels SET MediaMtxHost=$h, MediaMtxPort=$p WHERE Id=$i;";
+        cmd.Parameters.AddWithValue("$h", host);
+        cmd.Parameters.AddWithValue("$p", port);
+        cmd.Parameters.AddWithValue("$i", channelId);
+        cmd.ExecuteNonQuery();
+    }
+
     public List<(Channel Channel, VideoFile File)> LoadChannels()
     {
         var list = new List<(Channel, VideoFile)>();

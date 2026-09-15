@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -64,6 +65,7 @@ public partial class ChannelViewModel : ObservableObject
 
     public void NotifyRtspPathChanged()
     {
+        OnPropertyChanged(nameof(RtspUrlPrefix));
         OnPropertyChanged(nameof(RtspPath));
         OnPropertyChanged(nameof(RtspUrl));
     }
@@ -75,6 +77,9 @@ public partial class MainViewModel : ObservableObject
     private readonly FfprobeService _probe;
     private readonly ConversionService _conversion;
     private readonly StreamingService _streaming;
+    private readonly CancellationTokenSource _mediaMtxMonitorCts = new();
+    private bool? _lastMediaMtxReachable;
+    private string _lastMediaMtxTarget = string.Empty;
 
     public System.Collections.ObjectModel.ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public System.Collections.ObjectModel.ObservableCollection<string> Logs { get; } = new();
@@ -82,7 +87,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string mediaMtxHost = "127.0.0.1";
     [ObservableProperty] private int mediaMtxPort = 8554;
     [ObservableProperty] private string? mediaMtxStatus = "확인 안됨";
-    [ObservableProperty] private string bulkPathTemplate = "stream_{index}";
+    [ObservableProperty] private string bulkRtspTemplate = "rtsp://{host}:{port}/stream_{index}";
 
     public MainViewModel(SqliteService db, FfprobeService probe, ConversionService conversion,
         StreamingService streaming)
@@ -106,6 +111,7 @@ public partial class MainViewModel : ObservableObject
         _conversion.Progress += OnConversionProgress;
 
         LoadChannels();
+        StartMediaMtxMonitor();
     }
 
     // ffmpeg stderr는 매 프레임마다 진행 상황을 출력하므로, 오류·경고·중요한 상태만 남긴다.
@@ -129,41 +135,38 @@ public partial class MainViewModel : ObservableObject
 
     public IAsyncRelayCommand AddFileCommand => new AsyncRelayCommand(AddFileAsync);
     public IRelayCommand CheckMediaMtxCommand => new RelayCommand(DetectExternalMediaMtx);
-    public IRelayCommand ShowPathTemplateHelpCommand => new RelayCommand(ShowPathTemplateHelp);
-    public IRelayCommand ApplyPathToAllCommand => new RelayCommand(ApplyPathToAll);
+    public IRelayCommand ShowRtspTemplateHelpCommand => new RelayCommand(ShowRtspTemplateHelp);
+    public IRelayCommand ApplyRtspTemplateToAllCommand => new RelayCommand(ApplyRtspTemplateToAll);
 
-    private static void ShowPathTemplateHelp()
+    private static void ShowRtspTemplateHelp()
     {
-        const string message = "경로 템플릿은 모든 채널의 RTSP 경로를 한 번에 만들 때 사용합니다.\n\n"
+        const string message = "RTSP 템플릿은 모든 채널의 URL(호스트/포트/경로)을 한 번에 바꿀 때 사용합니다.\n\n"
             + "사용 가능한 값:\n"
+            + "  {host}       현재 MediaMTX Host 값\n"
+            + "  {port}       현재 MediaMTX Port 값\n"
             + "  {index}      채널 순번(1, 2, 3...)\n"
             + "  {index:D3}   3자리 0 채움 순번(001, 002...)\n"
             + "  {name}       채널명(경로에 쓸 수 없는 문자는 _로 변경)\n\n"
             + "예시:\n"
-            + "  stream_{index}     → stream_1, stream_2\n"
-            + "  cam_{index:D3}     → cam_001, cam_002\n"
-            + "  {name}_{index:D2}  → channel_01, channel_02\n\n"
-            + "{index}를 넣지 않으면 중복 방지를 위해 _1, _2 접미사가 자동으로 붙습니다.\n"
-            + "송출 중인 채널은 전체 경로 적용에서 제외됩니다.";
+            + "  rtsp://{host}:{port}/stream_{index}\n"
+            + "  rtsp://10.0.0.{index}:8554/cam_{index:D2}\n"
+            + "  stream_{index} (경로만 지정 시 host/port는 채널 기존값 유지)\n\n"
+            + "송출 중인 채널은 전체 적용에서 제외됩니다.";
 
-        MessageBox.Show(message, "경로 템플릿 도움말", MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show(message, "RTSP 템플릿 도움말", MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
-    // 템플릿을 기반으로 모든 채널의 RTSP 경로(호스트:포트 이후 부분)를 일괄 변경한다.
-    // 지원 플레이스홀더: {index} 또는 {index:패딩} (예: {index:D3} → 001), {name}(채널명 sanitize)
-    // {index}가 없으면 자동으로 "_1", "_2" 접미사를 붙여 중복을 방지한다.
-    private void ApplyPathToAll()
+    private void ApplyRtspTemplateToAll()
     {
-        var template = (BulkPathTemplate ?? string.Empty).Trim();
+        var template = (BulkRtspTemplate ?? string.Empty).Trim();
         if (template.Length == 0)
         {
-            AppendLog("[warn] 경로 템플릿이 비어 있음");
+            AppendLog("[warn] RTSP 템플릿이 비어 있음");
             return;
         }
 
         var indexRegex = new System.Text.RegularExpressions.Regex(@"\{index(?::([^}]+))?\}", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        bool hasIndex = indexRegex.IsMatch(template);
-        int updated = 0, skipped = 0, i = 0;
+        int updated = 0, skipped = 0, invalid = 0, i = 0;
 
         foreach (var vm in Channels)
         {
@@ -188,50 +191,120 @@ public partial class MainViewModel : ObservableObject
                     return currentIndex.ToString();
                 }
             });
-            raw = raw.Replace("{name}", sanitizedName, StringComparison.OrdinalIgnoreCase);
-            if (!hasIndex) raw = $"{raw}_{i}";
+            raw = raw.Replace("{name}", sanitizedName, StringComparison.OrdinalIgnoreCase)
+                     .Replace("{host}", MediaMtxHost ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+                     .Replace("{port}", MediaMtxPort.ToString(), StringComparison.OrdinalIgnoreCase)
+                     .Trim();
 
-            var newPath = System.Text.RegularExpressions.Regex.Replace(raw, @"[^A-Za-z0-9_\-/]", "_").Trim('/');
-            if (string.IsNullOrEmpty(newPath) || newPath == vm.Channel.RtspPath) continue;
+            string candidate;
+            if (raw.Contains("://", StringComparison.Ordinal))
+            {
+                candidate = raw;
+            }
+            else if (raw.Contains(':', StringComparison.Ordinal) && raw.Contains('/', StringComparison.Ordinal))
+            {
+                candidate = $"rtsp://{raw}";
+            }
+            else if (raw.Contains(':', StringComparison.Ordinal))
+            {
+                candidate = $"rtsp://{raw}/{vm.Channel.RtspPath}";
+            }
+            else
+            {
+                candidate = $"rtsp://{vm.Channel.MediaMtxHost}:{vm.Channel.MediaMtxPort}/{raw}";
+            }
 
-            vm.Channel.RtspPath = newPath;
-            _db.UpdateChannelRtspPath(vm.Channel.Id, newPath);
+            if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri)
+                || !uri.Scheme.Equals("rtsp", StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(uri.Host)
+                || uri.Port <= 0)
+            {
+                invalid++;
+                continue;
+            }
+
+            var newPath = System.Text.RegularExpressions.Regex.Replace(uri.AbsolutePath.Trim('/'), @"[^A-Za-z0-9_\-/]", "_").Trim('/');
+            if (string.IsNullOrEmpty(newPath))
+            {
+                invalid++;
+                continue;
+            }
+
+            bool changed = false;
+            if (!string.Equals(vm.Channel.MediaMtxHost, uri.Host, StringComparison.OrdinalIgnoreCase)
+                || vm.Channel.MediaMtxPort != uri.Port)
+            {
+                vm.Channel.MediaMtxHost = uri.Host;
+                vm.Channel.MediaMtxPort = uri.Port;
+                _db.UpdateChannelRtspEndpoint(vm.Channel.Id, uri.Host, uri.Port);
+                changed = true;
+            }
+
+            if (!string.Equals(vm.Channel.RtspPath, newPath, StringComparison.OrdinalIgnoreCase))
+            {
+                vm.Channel.RtspPath = newPath;
+                _db.UpdateChannelRtspPath(vm.Channel.Id, newPath);
+                changed = true;
+            }
+
+            if (!changed) continue;
             vm.NotifyRtspPathChanged();
             updated++;
         }
-        AppendLog($"[bulk] 경로 일괄 적용 (템플릿='{template}', 변경 {updated}, 송출 중 제외 {skipped})");
+        AppendLog($"[bulk] RTSP 템플릿 일괄 적용 (템플릿='{template}', 변경 {updated}, 송출 중 제외 {skipped}, 실패 {invalid})");
     }
     public IAsyncRelayCommand StartAllCommand => new AsyncRelayCommand(StartAllAsync);
     public IRelayCommand StopAllCommand => new RelayCommand(StopAll);
 
     public void DetectExternalMediaMtx()
     {
-        Task.Run(async () =>
+        _ = RefreshMediaMtxStatusAsync(logOnChange: true, CancellationToken.None);
+    }
+
+    private void StartMediaMtxMonitor()
+    {
+        _ = Task.Run(async () =>
         {
-            try
+            while (!_mediaMtxMonitorCts.IsCancellationRequested)
             {
-                using var client = new System.Net.Sockets.TcpClient();
-                var connectTask = client.ConnectAsync(MediaMtxHost, MediaMtxPort);
-                var timeout = Task.Delay(500);
-                var completed = await Task.WhenAny(connectTask, timeout).ConfigureAwait(false);
-                if (completed == connectTask && client.Connected)
+                await RefreshMediaMtxStatusAsync(logOnChange: true, _mediaMtxMonitorCts.Token).ConfigureAwait(false);
+                try
                 {
-                    Application.Current?.Dispatcher.Invoke(() =>
-                    {
-                        MediaMtxStatus = $"외부 감지됨 ({MediaMtxHost}:{MediaMtxPort})";
-                    });
-                    AppendLog($"[mediamtx] 외부 인스턴스 감지: {MediaMtxHost}:{MediaMtxPort}");
+                    await Task.Delay(TimeSpan.FromSeconds(3), _mediaMtxMonitorCts.Token).ConfigureAwait(false);
                 }
-                else
+                catch (OperationCanceledException)
                 {
-                    AppendLog($"[mediamtx] {MediaMtxHost}:{MediaMtxPort} 연결 불가 - MediaMTX가 실행 중인지 확인하세요.");
+                    break;
                 }
-            }
-            catch (Exception ex)
-            {
-                AppendLog($"[mediamtx] 연결 확인 실패: {ex.Message}");
             }
         });
+    }
+
+    private async Task RefreshMediaMtxStatusAsync(bool logOnChange, CancellationToken ct)
+    {
+        var host = MediaMtxHost;
+        var port = MediaMtxPort;
+        var reachable = await IsEndpointReachableAsync(host, port, 500, ct).ConfigureAwait(false);
+
+        var status = reachable
+            ? $"연결됨 ({host}:{port})"
+            : $"연결 안됨 ({host}:{port})";
+
+        Application.Current?.Dispatcher.Invoke(() => { MediaMtxStatus = status; });
+
+        if (!logOnChange) return;
+
+        var target = $"{host}:{port}";
+        bool changed = _lastMediaMtxReachable != reachable || !string.Equals(_lastMediaMtxTarget, target, StringComparison.OrdinalIgnoreCase);
+        if (changed)
+        {
+            if (reachable)
+                AppendLog($"[mediamtx] 연결됨: {target}");
+            else
+                AppendLog($"[mediamtx] 연결 안됨: {target}");
+            _lastMediaMtxReachable = reachable;
+            _lastMediaMtxTarget = target;
+        }
     }
 
     private void LoadChannels()
@@ -356,6 +429,14 @@ public partial class MainViewModel : ObservableObject
                 return;
             }
 
+            if (!await IsEndpointReachableAsync(vm.Channel.MediaMtxHost, vm.Channel.MediaMtxPort, 800).ConfigureAwait(true))
+            {
+                vm.Status = StreamStatus.Error;
+                vm.StatusMessage = "MediaMTX 연결 불가";
+                AppendLog($"[error] {vm.Name} MediaMTX 연결 실패: {vm.Channel.MediaMtxHost}:{vm.Channel.MediaMtxPort}");
+                return;
+            }
+
             var conflict = FindRtspPathConflict(vm.Channel);
             if (conflict != null)
             {
@@ -400,6 +481,28 @@ public partial class MainViewModel : ObservableObject
             && c.Channel.MediaMtxPort == current.MediaMtxPort
             && string.Equals(c.Channel.MediaMtxHost, current.MediaMtxHost, StringComparison.OrdinalIgnoreCase)
             && string.Equals(c.Channel.RtspPath, current.RtspPath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static async Task<bool> IsEndpointReachableAsync(string host, int port, int timeoutMs, CancellationToken ct = default)
+    {
+        try
+        {
+            using var client = new TcpClient();
+            var connectTask = client.ConnectAsync(host, port, ct).AsTask();
+            var timeoutTask = Task.Delay(timeoutMs, ct);
+            var completed = await Task.WhenAny(connectTask, timeoutTask).ConfigureAwait(false);
+            if (completed != connectTask) return false;
+            await connectTask.ConfigureAwait(false);
+            return client.Connected;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static async Task WaitForFileReadyAsync(string path)
@@ -501,6 +604,7 @@ public partial class MainViewModel : ObservableObject
 
     public void ShutdownAll()
     {
+        try { _mediaMtxMonitorCts.Cancel(); } catch { }
         _streaming.StopAll();
     }
 
