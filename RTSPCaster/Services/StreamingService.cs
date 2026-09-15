@@ -15,6 +15,7 @@ public class ChannelStreamContext
     public StreamStatus Status { get; set; } = StreamStatus.Idle;
     public int HistoryId { get; set; }
     public bool StreamCopyFailedEarly { get; set; }
+    public bool RtspBadRequestOnHeader { get; set; }
     public DateTime StartedAt { get; set; }
 }
 
@@ -77,6 +78,8 @@ public class StreamingService : IDisposable
             Log?.Invoke(this, (channel.Id, e.Data));
             if (DetectStreamCopyFailure(e.Data))
                 ctx.StreamCopyFailedEarly = true;
+            if (DetectRtspBadRequest(e.Data))
+                ctx.RtspBadRequestOnHeader = true;
         };
         proc.OutputDataReceived += (_, e) =>
         {
@@ -105,10 +108,22 @@ public class StreamingService : IDisposable
             result = "stopped";
             message = "User stopped";
         }
-        else if (earlyFail || exitCode != 0)
+        else if (ctx.RtspBadRequestOnHeader)
+        {
+            result = "error";
+            message = "RTSP server rejected publish request (400 Bad Request). Check duplicate path or publish permission.";
+            SetStatus(ctx, StreamStatus.Error, message);
+        }
+        else if (earlyFail)
         {
             result = "error";
             message = $"stream copy failed (exit {exitCode}). Requires pre-conversion.";
+            SetStatus(ctx, StreamStatus.Error, message);
+        }
+        else if (exitCode != 0)
+        {
+            result = "error";
+            message = $"streaming failed (exit {exitCode}).";
             SetStatus(ctx, StreamStatus.Error, message);
         }
         else
@@ -132,6 +147,12 @@ public class StreamingService : IDisposable
         if (line.Contains("bitstream malformed", StringComparison.OrdinalIgnoreCase)) return true;
         if (line.Contains("Error muxing a packet", StringComparison.OrdinalIgnoreCase)) return true;
         return false;
+    }
+
+    private static bool DetectRtspBadRequest(string line)
+    {
+        return line.Contains("Could not write header", StringComparison.OrdinalIgnoreCase)
+               && line.Contains("400 Bad Request", StringComparison.OrdinalIgnoreCase);
     }
 
     public void Stop(int channelId)

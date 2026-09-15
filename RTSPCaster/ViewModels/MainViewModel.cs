@@ -356,6 +356,15 @@ public partial class MainViewModel : ObservableObject
                 return;
             }
 
+            var conflict = FindRtspPathConflict(vm.Channel);
+            if (conflict != null)
+            {
+                vm.Status = StreamStatus.Error;
+                vm.StatusMessage = "RTSP 경로 충돌";
+                AppendLog($"[error] {vm.Name} RTSP 경로 충돌: '{vm.Channel.RtspPath}' 경로를 '{conflict.Name}' 채널이 이미 사용 중");
+                return;
+            }
+
             string sourcePath = vm.VideoFile.FilePath;
             if (!vm.VideoFile.StreamCopyCompatible)
             {
@@ -382,6 +391,15 @@ public partial class MainViewModel : ObservableObject
             vm.StatusMessage = ex.Message;
             AppendLog($"[error] {vm.Name} {ex.Message}");
         }
+    }
+
+    private ChannelViewModel? FindRtspPathConflict(Channel current)
+    {
+        return Channels.FirstOrDefault(c =>
+            c.Channel.Id != current.Id
+            && c.Channel.MediaMtxPort == current.MediaMtxPort
+            && string.Equals(c.Channel.MediaMtxHost, current.MediaMtxHost, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(c.Channel.RtspPath, current.RtspPath, StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task WaitForFileReadyAsync(string path)
