@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:RTSPCaster"
         xmlns:vm="clr-namespace:RTSPCaster.ViewModels"
         mc:Ignorable="d"
-        Title="RTSP Caster" Height="640" Width="1100">
+        Title="RTSP Caster" Height="1080" Width="1920">
     <Window.CommandBindings>
         <CommandBinding Command="{x:Static local:MainWindow.CopyLogsCommand}" Executed="CopyLogs_Executed" />
     </Window.CommandBindings>
@@ -22,60 +22,93 @@
                 </Grid.RowDefinitions>
 
                 <WrapPanel Grid.Row="0" VerticalAlignment="Center">
-                    <Button Content="파일 추가" Command="{Binding AddFileCommand}" Padding="8,2" Margin="6,6,6,6"/>
-                    <Button Content="VLC 경로 등록" Command="{Binding RegisterVlcPlayerPathCommand}" ToolTip="VLC 실행 파일(vlc.exe) 경로를 등록합니다." Padding="8,2" Margin="0,6,6,6"/>
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
-
-                        <Button Content="전체 시작" Grid.Row="0" Command="{Binding StartAllCommand}" Padding="8,8" Margin="6,6,6,6"/>
-                        <Button Content="전체 중지" Grid.Row="1" Command="{Binding StopAllCommand}" Padding="8,8" Margin="6,6,6,6"/>
+                        <Button Content="파일 추가" 
+                                Grid.Row="0" 
+                                Command="{Binding AddFileCommand}" 
+                                Padding="8,2" 
+                                Margin="6,6,6,6"
+                                />
+                        <Button Content="VLC 경로 등록" 
+                                Grid.Row="1" 
+                                Command="{Binding RegisterVlcPlayerPathCommand}" 
+                                ToolTip="VLC 실행 파일(vlc.exe) 경로를 등록합니다." 
+                                Padding="8,2" 
+                                Margin="6,6,6,6"
+                                />
                     </Grid>
 
-                    <GroupBox Header="MediaMTX" Margin="0,0,8,0" Padding="6,4,6,6">
-                        <StackPanel>
-                            <WrapPanel VerticalAlignment="Center" ItemHeight="28">
-                                <TextBlock Text="Host:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <TextBox Text="{Binding MediaMtxHost}" Width="110" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
-                                <TextBlock Text="Port:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <TextBox Text="{Binding MediaMtxPort}" Width="60" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
-                                <Button Content="연결 확인" Command="{Binding CheckMediaMtxCommand}"/>
-                            </WrapPanel>
-                            <TextBlock Text="{Binding MediaMtxStatus}" Margin="0,4,0,0" FontWeight="Bold"/>
-                        </StackPanel>
-                    </GroupBox>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
-                    <GroupBox Header="RTSP URL" Margin="0,0,8,0" Padding="6,4,6,6">
-                        <Grid Grid.Row="1" Margin="0,6,0,0">
-                            <WrapPanel VerticalAlignment="Center" ItemHeight="28">
-                                <TextBlock Text="템플릿:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <TextBox Text="{Binding BulkRtspTemplate}" Width="300"
-                                    ToolTip="rtsp://{host}:{port}/stream_{index} 형태. {host},{port},{index},{index:D3},{name} 지원" 
-                                         Margin="0,0,4,0" VerticalContentAlignment="Center"/>
-                                <Button Content="Help" Command="{Binding ShowRtspTemplateHelpCommand}"
-                                    ToolTip="RTSP 템플릿 사용법 보기" Margin="0,0,4,0" Padding="6,2"/>
-                                <Button Content="전체 적용" Command="{Binding ApplyRtspTemplateToAllCommand}"/>
-                            </WrapPanel>
-                        </Grid>
-                    </GroupBox>
+                        <GroupBox Header="MediaMTX" Margin="0,0,8,0" Padding="6,4,6,6" Grid.Row="0" Grid.ColumnSpan="2">
+                            <StackPanel>
+                                <WrapPanel VerticalAlignment="Center" ItemHeight="28">
+                                    <TextBlock Text="Host:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBox Text="{Binding MediaMtxHost}" Width="110" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
+                                    <TextBlock Text="Port:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBox Text="{Binding MediaMtxPort}" Width="60" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
+                                    <Button Content="연결 확인" Command="{Binding CheckMediaMtxCommand}"/>
+                                </WrapPanel>
+                                <TextBlock Text="{Binding MediaMtxStatus}" Margin="0,4,0,0" FontWeight="Bold"/>
+                            </StackPanel>
+                        </GroupBox>
 
-                    <GroupBox Header="자동 재시작" Margin="0,0,8,0" Padding="6,4,6,6">
-                        <StackPanel>
-                            <WrapPanel VerticalAlignment="Center" ItemHeight="28">
-                                <CheckBox Content="활성화" IsChecked="{Binding AutoRestartEnabled}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBlock Text="최대 재시도:" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <TextBox Text="{Binding MaxAutoRestartAttempts, UpdateSourceTrigger=LostFocus}" Width="50" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
-                                <TextBlock Text="기본 지연(s):" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <TextBox Text="{Binding AutoRestartBaseDelaySeconds, UpdateSourceTrigger=LostFocus}" Width="60" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
-                                <TextBlock Text="리셋 기준(s):" VerticalAlignment="Center" Margin="0,0,4,0"/>
-                                <TextBox Text="{Binding AutoRestartResetThresholdSeconds, UpdateSourceTrigger=LostFocus}" Width="60" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
-                                <Button Content="적용" Command="{Binding ApplyRestartPolicyCommand}" Padding="8,2"/>
-                            </WrapPanel>
-                        </StackPanel>
-                    </GroupBox>
+
+
+                        <Button Content="전체 시작" Grid.Row="1" Grid.Column="0" Command="{Binding StartAllCommand}" Padding="8,8" Margin="6,6,6,6"/>
+                        <Button Content="전체 중지" Grid.Row="1" Grid.Column="1" Command="{Binding StopAllCommand}" Padding="8,8" Margin="6,6,6,6"/>
+                    </Grid>
+
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <GroupBox Header="RTSP URL" Margin="0,0,8,0" Padding="6,4,6,6" Grid.Row="0">
+                            <Grid Grid.Row="1" Margin="0,6,0,0">
+                                <WrapPanel VerticalAlignment="Center" ItemHeight="28">
+                                    <TextBlock Text="템플릿:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBox Text="{Binding BulkRtspTemplate}" Width="300"
+                                        ToolTip="rtsp://{host}:{port}/stream_{index} 형태. {host},{port},{index},{index:D3},{name} 지원" 
+                                        Margin="0,0,4,0" VerticalContentAlignment="Center"/>
+                                    <Button Content="Help" Command="{Binding ShowRtspTemplateHelpCommand}"
+                                        ToolTip="RTSP 템플릿 사용법 보기" Margin="0,0,4,0" Padding="6,2"/>
+                                    <Button Content="전체 적용" Command="{Binding ApplyRtspTemplateToAllCommand}"/>
+                                </WrapPanel>
+                            </Grid>
+                        </GroupBox>
+
+                        <GroupBox Header="자동 재시작" Margin="0,0,8,0" Padding="6,4,6,6" Grid.Row="1">
+                            <StackPanel>
+                                <WrapPanel VerticalAlignment="Center" ItemHeight="28">
+                                    <CheckBox Content="활성화" IsChecked="{Binding AutoRestartEnabled}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="최대 재시도:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBox Text="{Binding MaxAutoRestartAttempts, UpdateSourceTrigger=LostFocus}" Width="50" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
+                                    <TextBlock Text="기본 지연(s):" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBox Text="{Binding AutoRestartBaseDelaySeconds, UpdateSourceTrigger=LostFocus}" Width="60" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
+                                    <TextBlock Text="리셋 기준(s):" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBox Text="{Binding AutoRestartResetThresholdSeconds, UpdateSourceTrigger=LostFocus}" Width="60" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
+                                    <Button Content="적용" Command="{Binding ApplyRestartPolicyCommand}" Padding="8,2"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </GroupBox>
+                    </Grid>
+
+                    
                 </WrapPanel>
 
                 
