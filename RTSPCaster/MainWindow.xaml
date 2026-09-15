@@ -23,6 +23,7 @@
 
                 <WrapPanel Grid.Row="0" VerticalAlignment="Center">
                     <Button Content="파일 추가" Command="{Binding AddFileCommand}" Padding="8,2" Margin="6,6,6,6"/>
+                    <Button Content="VLC 경로 등록" Command="{Binding RegisterVlcPlayerPathCommand}" ToolTip="VLC 실행 파일(vlc.exe) 경로를 등록합니다." Padding="8,2" Margin="0,6,6,6"/>
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -78,9 +79,10 @@
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="채널" Binding="{Binding Name}" Width="140" IsReadOnly="True"/>
                     <DataGridTextColumn Header="파일" Binding="{Binding FileName}" Width="200" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="해상도" Binding="{Binding Resolution}" Width="90" IsReadOnly="True"/>
                     <DataGridTextColumn Header="코덱(V/A)" Binding="{Binding Codecs}" Width="120" IsReadOnly="True"/>
                     <DataGridTextColumn Header="호환성" Binding="{Binding CompatibilityText}" Width="200" IsReadOnly="True"/>
-                    <DataGridTemplateColumn Header="RTSP URL (경로 편집 가능)" Width="320">
+                    <DataGridTemplateColumn Header="RTSP URL (경로 편집 가능)" Width="380">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal">
@@ -90,11 +92,26 @@
                                     <Button Content="📋" Command="{Binding CopyUrlCommand}"
                                             ToolTip="URL을 클립보드에 복사"
                                             Margin="4,0,0,0" Padding="6,0" VerticalAlignment="Center"/>
+                                    <Button Content="VLC" Command="{Binding OpenVlcCommand}"
+                                            ToolTip="등록된 VLC 플레이어로 스트림 열기"
+                                            Margin="4,0,0,0" Padding="6,0" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
                     <DataGridTextColumn Header="상태" Binding="{Binding Status}" Width="90" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="헬스" Binding="{Binding HealthSummary}" Width="200" IsReadOnly="True"/>
+                    <DataGridTemplateColumn Header="그래프" Width="130" IsReadOnly="True">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Border Height="20" Width="110" Margin="0,3,0,3" BorderBrush="#33000000" BorderThickness="1" CornerRadius="2" HorizontalAlignment="Center">
+                                    <Canvas Width="110" Height="20" Background="#05000000">
+                                        <Polyline Points="{Binding HealthSparkPoints}" Stroke="#2E7D32" StrokeThickness="1.4"/>
+                                    </Canvas>
+                                </Border>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                     <DataGridTemplateColumn Header="변환 진행률" Width="120" IsReadOnly="True">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>

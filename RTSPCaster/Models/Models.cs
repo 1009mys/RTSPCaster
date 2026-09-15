@@ -21,6 +21,8 @@ public class VideoFile
     public long FileSize { get; set; }
     public string? VideoCodec { get; set; }
     public string? AudioCodec { get; set; }
+    public int VideoWidth { get; set; }
+    public int VideoHeight { get; set; }
     public double DurationSeconds { get; set; }
     public bool StreamCopyCompatible { get; set; }
     public string? IncompatibleReason { get; set; }
@@ -63,6 +65,8 @@ public class ProbeResult
 {
     public string? VideoCodec { get; set; }
     public string? AudioCodec { get; set; }
+    public int VideoWidth { get; set; }
+    public int VideoHeight { get; set; }
     public double DurationSeconds { get; set; }
     public bool StreamCopyCompatible { get; set; }
     public string? IncompatibleReason { get; set; }

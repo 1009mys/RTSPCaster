@@ -64,7 +64,14 @@ public class FfprobeService
             {
                 var type = s.TryGetProperty("codec_type", out var t) ? t.GetString() : null;
                 var codec = s.TryGetProperty("codec_name", out var c) ? c.GetString() : null;
-                if (type == "video" && result.VideoCodec == null) result.VideoCodec = codec;
+                if (type == "video" && result.VideoCodec == null)
+                {
+                    result.VideoCodec = codec;
+                    if (s.TryGetProperty("width", out var w) && w.TryGetInt32(out var width))
+                        result.VideoWidth = width;
+                    if (s.TryGetProperty("height", out var h) && h.TryGetInt32(out var height))
+                        result.VideoHeight = height;
+                }
                 else if (type == "audio" && result.AudioCodec == null) result.AudioCodec = codec;
             }
         }

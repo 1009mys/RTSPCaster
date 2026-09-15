@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS VideoFiles (
     FileSize INTEGER NOT NULL,
     VideoCodec TEXT,
     AudioCodec TEXT,
+    VideoWidth INTEGER NOT NULL DEFAULT 0,
+    VideoHeight INTEGER NOT NULL DEFAULT 0,
     DurationSeconds REAL NOT NULL,
     StreamCopyCompatible INTEGER NOT NULL,
     IncompatibleReason TEXT,
@@ -65,8 +67,41 @@ CREATE TABLE IF NOT EXISTS StreamHistory (
     EndedAt TEXT,
     Result TEXT NOT NULL,
     Message TEXT
+);
+CREATE TABLE IF NOT EXISTS AppSettings (
+    Key TEXT PRIMARY KEY,
+    Value TEXT
 );";
         cmd.ExecuteNonQuery();
+        EnsureVideoFilesColumns(conn);
+    }
+
+    private static void EnsureVideoFilesColumns(SqliteConnection conn)
+    {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "PRAGMA table_info(VideoFiles);";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                if (!r.IsDBNull(1)) columns.Add(r.GetString(1));
+            }
+        }
+
+        if (!columns.Contains("VideoWidth"))
+        {
+            using var addWidth = conn.CreateCommand();
+            addWidth.CommandText = "ALTER TABLE VideoFiles ADD COLUMN VideoWidth INTEGER NOT NULL DEFAULT 0;";
+            addWidth.ExecuteNonQuery();
+        }
+
+        if (!columns.Contains("VideoHeight"))
+        {
+            using var addHeight = conn.CreateCommand();
+            addHeight.CommandText = "ALTER TABLE VideoFiles ADD COLUMN VideoHeight INTEGER NOT NULL DEFAULT 0;";
+            addHeight.ExecuteNonQuery();
+        }
     }
 
     public int UpsertVideoFile(VideoFile f)
@@ -74,13 +109,15 @@ CREATE TABLE IF NOT EXISTS StreamHistory (
         using var conn = Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-INSERT INTO VideoFiles(FilePath,FileName,FileSize,VideoCodec,AudioCodec,DurationSeconds,StreamCopyCompatible,IncompatibleReason,CreatedAt)
-VALUES ($p,$n,$s,$vc,$ac,$d,$sc,$ir,$c)
+INSERT INTO VideoFiles(FilePath,FileName,FileSize,VideoCodec,AudioCodec,VideoWidth,VideoHeight,DurationSeconds,StreamCopyCompatible,IncompatibleReason,CreatedAt)
+VALUES ($p,$n,$s,$vc,$ac,$vw,$vh,$d,$sc,$ir,$c)
 ON CONFLICT(FilePath) DO UPDATE SET
     FileName=excluded.FileName,
     FileSize=excluded.FileSize,
     VideoCodec=excluded.VideoCodec,
     AudioCodec=excluded.AudioCodec,
+    VideoWidth=excluded.VideoWidth,
+    VideoHeight=excluded.VideoHeight,
     DurationSeconds=excluded.DurationSeconds,
     StreamCopyCompatible=excluded.StreamCopyCompatible,
     IncompatibleReason=excluded.IncompatibleReason
@@ -90,6 +127,8 @@ RETURNING Id;";
         cmd.Parameters.AddWithValue("$s", f.FileSize);
         cmd.Parameters.AddWithValue("$vc", (object?)f.VideoCodec ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$ac", (object?)f.AudioCodec ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$vw", f.VideoWidth);
+        cmd.Parameters.AddWithValue("$vh", f.VideoHeight);
         cmd.Parameters.AddWithValue("$d", f.DurationSeconds);
         cmd.Parameters.AddWithValue("$sc", f.StreamCopyCompatible ? 1 : 0);
         cmd.Parameters.AddWithValue("$ir", (object?)f.IncompatibleReason ?? DBNull.Value);
@@ -150,7 +189,7 @@ VALUES($n,$v,$r,$h,$p,$c) RETURNING Id;";
         using var conn = Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"SELECT c.Id,c.Name,c.VideoFileId,c.RtspPath,c.MediaMtxHost,c.MediaMtxPort,c.CreatedAt,
-    v.Id,v.FilePath,v.FileName,v.FileSize,v.VideoCodec,v.AudioCodec,v.DurationSeconds,v.StreamCopyCompatible,v.IncompatibleReason,v.CreatedAt
+    v.Id,v.FilePath,v.FileName,v.FileSize,v.VideoCodec,v.AudioCodec,v.VideoWidth,v.VideoHeight,v.DurationSeconds,v.StreamCopyCompatible,v.IncompatibleReason,v.CreatedAt
 FROM Channels c JOIN VideoFiles v ON v.Id=c.VideoFileId;";
         using var r = cmd.ExecuteReader();
         while (r.Read())
@@ -173,10 +212,12 @@ FROM Channels c JOIN VideoFiles v ON v.Id=c.VideoFileId;";
                 FileSize = r.GetInt64(10),
                 VideoCodec = r.IsDBNull(11) ? null : r.GetString(11),
                 AudioCodec = r.IsDBNull(12) ? null : r.GetString(12),
-                DurationSeconds = r.GetDouble(13),
-                StreamCopyCompatible = r.GetInt32(14) == 1,
-                IncompatibleReason = r.IsDBNull(15) ? null : r.GetString(15),
-                CreatedAt = DateTime.Parse(r.GetString(16))
+                VideoWidth = r.GetInt32(13),
+                VideoHeight = r.GetInt32(14),
+                DurationSeconds = r.GetDouble(15),
+                StreamCopyCompatible = r.GetInt32(16) == 1,
+                IncompatibleReason = r.IsDBNull(17) ? null : r.GetString(17),
+                CreatedAt = DateTime.Parse(r.GetString(18))
             };
             list.Add((ch, vf));
         }
@@ -236,6 +277,27 @@ VALUES($v,$s,$c,$h,$t);";
         cmd.Parameters.AddWithValue("$r", result);
         cmd.Parameters.AddWithValue("$m", (object?)message ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$i", historyId);
+        cmd.ExecuteNonQuery();
+    }
+
+    public string? GetSetting(string key)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT Value FROM AppSettings WHERE Key=$k LIMIT 1;";
+        cmd.Parameters.AddWithValue("$k", key);
+        var value = cmd.ExecuteScalar();
+        return value == null || value == DBNull.Value ? null : Convert.ToString(value);
+    }
+
+    public void SetSetting(string key, string? value)
+    {
+        using var conn = Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"INSERT INTO AppSettings(Key,Value) VALUES($k,$v)
+ON CONFLICT(Key) DO UPDATE SET Value=excluded.Value;";
+        cmd.Parameters.AddWithValue("$k", key);
+        cmd.Parameters.AddWithValue("$v", (object?)value ?? DBNull.Value);
         cmd.ExecuteNonQuery();
     }
 }
