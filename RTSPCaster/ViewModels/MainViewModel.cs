@@ -165,6 +165,10 @@ public partial class MainViewModel : ObservableObject
 {
     private readonly record struct StreamHealthSample(double Fps, double BitrateKbps, double Speed, double? MediaSeconds);
     private const string VlcPlayerPathSettingKey = "VlcPlayerPath";
+    private const string AutoRestartEnabledSettingKey = "AutoRestartEnabled";
+    private const string MaxAutoRestartAttemptsSettingKey = "MaxAutoRestartAttempts";
+    private const string AutoRestartBaseDelaySecondsSettingKey = "AutoRestartBaseDelaySeconds";
+    private const string AutoRestartResetThresholdSecondsSettingKey = "AutoRestartResetThresholdSeconds";
 
     private readonly SqliteService _db;
     private readonly FfprobeService _probe;
@@ -187,6 +191,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty] private string? mediaMtxStatus = "확인 안됨";
     [ObservableProperty] private string bulkRtspTemplate = "rtsp://{host}:{port}/stream_{index}";
     [ObservableProperty] private string vlcPlayerPath = string.Empty;
+    [ObservableProperty] private bool autoRestartEnabled = true;
+    [ObservableProperty] private int maxAutoRestartAttempts = 3;
+    [ObservableProperty] private int autoRestartBaseDelaySeconds = 2;
+    [ObservableProperty] private int autoRestartResetThresholdSeconds = 30;
 
     public MainViewModel(SqliteService db, FfprobeService probe, ConversionService conversion,
         StreamingService streaming)
@@ -214,8 +222,33 @@ public partial class MainViewModel : ObservableObject
             ?? ToolLocator.Find("vlc.exe")
             ?? string.Empty;
 
+        LoadRestartPolicySettings();
+        ApplyRestartPolicySettings(saveToDb: false, writeLog: false);
+
         LoadChannels();
         StartMediaMtxMonitor();
+    }
+
+    private void LoadRestartPolicySettings()
+    {
+        AutoRestartEnabled = ParseBoolSetting(_db.GetSetting(AutoRestartEnabledSettingKey), _streaming.AutoRestartEnabled);
+        MaxAutoRestartAttempts = ParseIntSetting(_db.GetSetting(MaxAutoRestartAttemptsSettingKey), _streaming.MaxAutoRestartAttempts, 0, 20);
+        AutoRestartBaseDelaySeconds = ParseIntSetting(_db.GetSetting(AutoRestartBaseDelaySecondsSettingKey), (int)_streaming.AutoRestartBaseDelay.TotalSeconds, 1, 120);
+        AutoRestartResetThresholdSeconds = ParseIntSetting(_db.GetSetting(AutoRestartResetThresholdSecondsSettingKey), (int)_streaming.AutoRestartAttemptResetThreshold.TotalSeconds, 5, 3600);
+    }
+
+    private static int ParseIntSetting(string? raw, int fallback, int min, int max)
+    {
+        if (!int.TryParse(raw, out var value)) value = fallback;
+        return Math.Clamp(value, min, max);
+    }
+
+    private static bool ParseBoolSetting(string? raw, bool fallback)
+    {
+        if (bool.TryParse(raw, out var b)) return b;
+        if (raw == "1") return true;
+        if (raw == "0") return false;
+        return fallback;
     }
 
     // ffmpeg stderr는 매 프레임마다 진행 상황을 출력하므로, 오류·경고·중요한 상태만 남긴다.
@@ -324,6 +357,32 @@ public partial class MainViewModel : ObservableObject
     public IRelayCommand ShowRtspTemplateHelpCommand => new RelayCommand(ShowRtspTemplateHelp);
     public IRelayCommand ApplyRtspTemplateToAllCommand => new RelayCommand(ApplyRtspTemplateToAll);
     public IRelayCommand RegisterVlcPlayerPathCommand => new RelayCommand(RegisterVlcPlayerPath);
+    public IRelayCommand ApplyRestartPolicyCommand => new RelayCommand(() => ApplyRestartPolicySettings(saveToDb: true, writeLog: true));
+
+    private void ApplyRestartPolicySettings(bool saveToDb, bool writeLog)
+    {
+        MaxAutoRestartAttempts = Math.Clamp(MaxAutoRestartAttempts, 0, 20);
+        AutoRestartBaseDelaySeconds = Math.Clamp(AutoRestartBaseDelaySeconds, 1, 120);
+        AutoRestartResetThresholdSeconds = Math.Clamp(AutoRestartResetThresholdSeconds, 5, 3600);
+
+        _streaming.AutoRestartEnabled = AutoRestartEnabled;
+        _streaming.MaxAutoRestartAttempts = MaxAutoRestartAttempts;
+        _streaming.AutoRestartBaseDelay = TimeSpan.FromSeconds(AutoRestartBaseDelaySeconds);
+        _streaming.AutoRestartAttemptResetThreshold = TimeSpan.FromSeconds(AutoRestartResetThresholdSeconds);
+
+        if (saveToDb)
+        {
+            _db.SetSetting(AutoRestartEnabledSettingKey, AutoRestartEnabled ? "true" : "false");
+            _db.SetSetting(MaxAutoRestartAttemptsSettingKey, MaxAutoRestartAttempts.ToString());
+            _db.SetSetting(AutoRestartBaseDelaySecondsSettingKey, AutoRestartBaseDelaySeconds.ToString());
+            _db.SetSetting(AutoRestartResetThresholdSecondsSettingKey, AutoRestartResetThresholdSeconds.ToString());
+        }
+
+        if (writeLog)
+        {
+            AppendLog($"[restart] 정책 적용: enabled={AutoRestartEnabled}, max={MaxAutoRestartAttempts}, delay={AutoRestartBaseDelaySeconds}s, reset={AutoRestartResetThresholdSeconds}s");
+        }
+    }
 
     private void RegisterVlcPlayerPath()
     {

@@ -171,7 +171,7 @@ public class StreamingService : IDisposable
             }
 
             result = "error";
-            if (AutoRestartEnabled && ctx.AutoRestartAttempts >= MaxAutoRestartAttempts)
+            if (AutoRestartEnabled && MaxAutoRestartAttempts > 0 && ctx.AutoRestartAttempts >= MaxAutoRestartAttempts)
                 message = $"streaming failed (exit {exitCode}). auto-restart limit reached ({ctx.AutoRestartAttempts}/{MaxAutoRestartAttempts}).";
             else
                 message = $"streaming failed (exit {exitCode}).";
@@ -195,6 +195,7 @@ public class StreamingService : IDisposable
         if (ctx.Cts.IsCancellationRequested) return false;
         if (ctx.RtspBadRequestOnHeader) return false;
         if (earlyFail) return false;
+        if (MaxAutoRestartAttempts <= 0) return true;
         return ctx.AutoRestartAttempts < MaxAutoRestartAttempts;
     }
 
@@ -204,7 +205,10 @@ public class StreamingService : IDisposable
         var delaySeconds = AutoRestartBaseDelay.TotalSeconds * Math.Pow(2, Math.Max(0, ctx.AutoRestartAttempts - 1));
         var delay = TimeSpan.FromSeconds(Math.Clamp(delaySeconds, 1, 30));
 
-        var message = $"streaming failed (exit {exitCode}). auto-restart {ctx.AutoRestartAttempts}/{MaxAutoRestartAttempts} in {delay.TotalSeconds:0}s";
+        var attemptText = MaxAutoRestartAttempts <= 0
+            ? $"{ctx.AutoRestartAttempts}/¡Ä"
+            : $"{ctx.AutoRestartAttempts}/{MaxAutoRestartAttempts}";
+        var message = $"streaming failed (exit {exitCode}). auto-restart {attemptText} in {delay.TotalSeconds:0}s";
         _db.EndHistory(ctx.HistoryId, "restart", message);
         SetStatus(ctx, StreamStatus.Ready, message);
 

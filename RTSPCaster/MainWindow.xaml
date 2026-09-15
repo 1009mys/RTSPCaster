@@ -61,6 +61,21 @@
                             </WrapPanel>
                         </Grid>
                     </GroupBox>
+
+                    <GroupBox Header="자동 재시작" Margin="0,0,8,0" Padding="6,4,6,6">
+                        <StackPanel>
+                            <WrapPanel VerticalAlignment="Center" ItemHeight="28">
+                                <CheckBox Content="활성화" IsChecked="{Binding AutoRestartEnabled}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Text="최대 재시도:" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBox Text="{Binding MaxAutoRestartAttempts, UpdateSourceTrigger=LostFocus}" Width="50" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
+                                <TextBlock Text="기본 지연(s):" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBox Text="{Binding AutoRestartBaseDelaySeconds, UpdateSourceTrigger=LostFocus}" Width="60" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
+                                <TextBlock Text="리셋 기준(s):" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBox Text="{Binding AutoRestartResetThresholdSeconds, UpdateSourceTrigger=LostFocus}" Width="60" Margin="0,0,6,0" VerticalContentAlignment="Center"/>
+                                <Button Content="적용" Command="{Binding ApplyRestartPolicyCommand}" Padding="8,2"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </GroupBox>
                 </WrapPanel>
 
                 
