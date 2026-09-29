@@ -1,0 +1,303 @@
+{
+  "info": {
+    "name": "RTSPCaster.Backend API",
+    "description": "RTSPCaster.Backend 전체 API 테스트. 인증 없음. baseUrl을 서버 주소로 설정하고 업로드 요청의 Body > form-data > files에서 동영상을 선택하세요. 업로드 성공 시 channelId를 컬렉션 변수에 저장합니다. 환경 변수에 같은 이름이 있으면 컬렉션 변수보다 우선하므로 중복 정의하지 마세요.\n\n전체 채널 제어·템플릿·설정 교체는 allowGlobalChanges=true, 삭제는 allowDelete=true일 때만 실행됩니다. SSE는 enableSse=true일 때만 실행되며 응답이 끝나지 않으므로 Runner에서는 제외하세요. MediaMTX와 FFmpeg/ffprobe가 필요합니다. 202는 송출 성공이 아닌 시작 작업 접수입니다. 자세한 내용은 같은 폴더의 README.md를 참고하세요.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": { "type": "noauth" },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5058", "type": "string" },
+    { "key": "channelId", "value": "", "type": "string" },
+    { "key": "mediaMtxHost", "value": "127.0.0.1", "type": "string" },
+    { "key": "mediaMtxPort", "value": "8554", "type": "string" },
+    { "key": "rtspPath", "value": "postman_001", "type": "string" },
+    { "key": "rtspTemplate", "value": "rtsp://{host}:{port}/postman_{index:D3}", "type": "string" },
+    { "key": "lastLogId", "value": "0", "type": "string" },
+    { "key": "allowGlobalChanges", "value": "false", "type": "string" },
+    { "key": "allowDelete", "value": "false", "type": "string" },
+    { "key": "enableSse", "value": "false", "type": "string" }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const url = pm.request.url.toString();",
+          "if (url.includes('{{channelId}}') && !/^[1-9][0-9]*$/.test(String(pm.variables.get('channelId') || ''))) {",
+          "  console.warn('먼저 파일을 업로드하거나 channelId를 설정하세요. 요청을 건너뜁니다.');",
+          "  pm.execution.skipRequest();",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "01. 상태 및 조회",
+      "item": [
+        {
+          "name": "전체 상태",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/status" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('상태 스냅샷 계약', () => { const body = pm.response.json(); pm.expect(body).to.have.all.keys('settings', 'mediaMtx', 'channels', 'logs'); pm.expect(body.channels).to.be.an('array'); });"
+          ] } }]
+        },
+        {
+          "name": "채널 목록",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/channels", "description": "기존 채널을 사용할 때 응답의 id를 channelId 변수에 입력하세요. 목록 조회는 channelId를 자동 변경하지 않습니다." },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('채널 배열', () => pm.expect(pm.response.json()).to.be.an('array'));"
+          ] } }]
+        },
+        {
+          "name": "설정 조회",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/settings" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('재시작 및 MediaMTX 설정', () => { const body = pm.response.json(); pm.expect(body).to.have.property('mediaMtxHost'); pm.expect(body).to.have.property('autoRestartEnabled'); });"
+          ] } }]
+        },
+        {
+          "name": "최근 MediaMTX 연결 상태",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/mediamtx" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('연결 상태 계약', () => pm.expect(pm.response.json()).to.have.all.keys('host', 'port', 'reachable', 'checkedAt'));"
+          ] } }]
+        },
+        {
+          "name": "MediaMTX 즉시 연결 확인",
+          "request": { "method": "POST", "header": [{ "key": "X-RTSPCaster-Client", "value": "web" }], "url": "{{baseUrl}}/api/mediamtx/check", "description": "TCP 연결을 검사합니다. reachable=false여도 API 검사 요청 자체는 200입니다. 송출 전에 reachable 값을 확인하세요." },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('연결 검사 완료', () => { const body = pm.response.json(); pm.expect(body.reachable).to.be.a('boolean'); pm.expect(body.checkedAt).to.be.a('string'); });",
+            "if (pm.response.code === 200 && !pm.response.json().reachable) console.warn('MediaMTX 연결 실패: 서버 주소/포트와 실행 상태를 확인하세요.');"
+          ] } }]
+        },
+        {
+          "name": "RTSP 템플릿 도움말",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/rtsp-template/help" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('템플릿 변수 제공', () => pm.expect(pm.response.json().placeholders).to.include('{index:D3}'));"
+          ] } }]
+        },
+        {
+          "name": "OpenAPI 명세",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/openapi/v1.json" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('OpenAPI 명세', () => pm.expect(pm.response.json()).to.have.property('openapi'));"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "02. 업로드 및 채널 제어",
+      "description": "파일 등록과 선택 채널의 설정·송출 상태를 변경합니다. 파일 선택 후 순서대로 실행하세요. 변환/송출은 비동기이므로 시작 후 상세를 별도로 조회해야 합니다.",
+      "item": [
+        {
+          "name": "동영상 업로드 → channelId 자동 저장",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-RTSPCaster-Client", "value": "web" }],
+            "url": "{{baseUrl}}/api/channels/upload",
+            "body": { "mode": "formdata", "formdata": [{ "key": "files", "type": "file", "src": [], "description": "Select Files로 영상 파일을 선택하세요. 여러 파일도 선택할 수 있습니다." }] },
+            "description": "Body > form-data > files에서 실제 동영상을 선택하세요. Content-Type은 Postman이 boundary와 함께 자동 생성합니다. 200 응답이어도 파일별 error가 있을 수 있습니다. 첫 성공 채널 ID를 저장합니다."
+          },
+          "event": [
+            { "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.unset('channelId');"] } },
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) {",
+              "  const rows = pm.response.json();",
+              "  pm.test('파일별 업로드 성공', () => { pm.expect(rows).to.be.an('array').that.is.not.empty; rows.forEach(row => { pm.expect(row.error, row.fileName).to.equal(null); pm.expect(row.channel).to.be.an('object'); }); });",
+              "  const first = Array.isArray(rows) && rows.find(row => row.channel && !row.error);",
+              "  if (first) { pm.collectionVariables.set('channelId', String(first.channel.id)); console.log('channelId =', first.channel.id); }",
+              "}"
+            ] } }
+          ]
+        },
+        {
+          "name": "채널 상세 및 송출 상태",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/channels/{{channelId}}", "description": "status, statusMessage, operationInProgress, conversionProgress, healthSamples를 확인합니다. 시작 후 이 요청을 다시 실행해 Streaming 또는 Error 상태를 확인하세요." },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('채널 상태 계약', () => { const body = pm.response.json(); pm.expect(body.id).to.equal(Number(pm.variables.get('channelId'))); pm.expect(body.status).to.be.oneOf(['Idle', 'Probing', 'Converting', 'Ready', 'Streaming', 'Stopping', 'Error']); pm.expect(body.healthSamples).to.be.an('array'); });",
+            "if (pm.response.code === 200) console.log('송출 상태:', pm.response.json().status, pm.response.json().statusMessage);"
+          ] } }]
+        },
+        {
+          "name": "채널 RTSP 대상 변경",
+          "request": {
+            "method": "PUT", "header": [{ "key": "X-RTSPCaster-Client", "value": "web" }, { "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/api/channels/{{channelId}}/endpoint",
+            "body": { "mode": "raw", "raw": "{\n  \"rtspPath\": \"{{rtspPath}}\",\n  \"mediaMtxHost\": \"{{mediaMtxHost}}\",\n  \"mediaMtxPort\": {{mediaMtxPort}}\n}", "options": { "raw": { "language": "json" } } },
+            "description": "채널을 중지한 상태에서 실행하세요. 다른 채널과 URL이 같거나 작업 중이면 409입니다. 원격 플레이어에서도 접근 가능한 MediaMTX IP/DNS를 사용하세요."
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('대상 포트 반영', () => pm.expect(pm.response.json().mediaMtxPort).to.equal(Number(pm.variables.get('mediaMtxPort'))));"
+          ] } }]
+        },
+        {
+          "name": "채널 송출 시작 (202 접수)",
+          "request": { "method": "POST", "header": [{ "key": "X-RTSPCaster-Client", "value": "web" }], "url": "{{baseUrl}}/api/channels/{{channelId}}/start", "description": "검사/변환 작업을 접수합니다. 202는 실제 송출 성공을 의미하지 않습니다. 상세 또는 SSE를 확인하세요. 이미 처리 중이면 409입니다." },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+            "pm.test('상태 조회 위치 제공', () => pm.expect(pm.response.headers.get('Location')).to.include('/api/channels/' + pm.variables.get('channelId')));"
+          ] } }]
+        },
+        {
+          "name": "RTSP 주소 반환",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/channels/{{channelId}}/url" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('RTSP URL 제공', () => pm.expect(pm.response.json().rtspUrl.startsWith('rtsp://')).to.equal(true));"
+          ] } }]
+        },
+        {
+          "name": "채널 송출 중지 / 준비 취소",
+          "request": { "method": "POST", "header": [{ "key": "X-RTSPCaster-Client", "value": "web" }], "url": "{{baseUrl}}/api/channels/{{channelId}}/stop" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('중지 완료', () => { const body = pm.response.json(); pm.expect(body.status).to.equal('Idle'); pm.expect(body.operationInProgress).to.equal(false); });"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "03. 로그",
+      "item": [
+        {
+          "name": "최근 로그 전체 → cursor 저장",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/logs?after=0" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('최대 500개 로그', () => { const body = pm.response.json(); pm.expect(body.entries).to.be.an('array'); pm.expect(body.entries.length).to.be.at.most(500); });",
+            "if (pm.response.code === 200) pm.collectionVariables.set('lastLogId', String(pm.response.json().lastId));"
+          ] } }]
+        },
+        {
+          "name": "cursor 이후 로그 → cursor 갱신",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/logs?after={{lastLogId}}", "description": "Backend 재시작으로 로그 ID가 작아지면 lastLogId를 0으로 초기화합니다. 그 다음 요청에서 새 로그를 받습니다." },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "if (pm.response.code === 200) {",
+            "  const body = pm.response.json(); const previous = Number(pm.variables.get('lastLogId'));",
+            "  pm.test('cursor 이후 로그만 반환', () => { pm.expect(body.entries).to.be.an('array'); body.entries.forEach(entry => pm.expect(entry.id).to.be.above(previous)); });",
+            "  pm.collectionVariables.set('lastLogId', body.lastId < previous ? '0' : String(body.lastId));",
+            "}"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "04. 전체 변경 (기본 비활성)",
+      "description": "실행 전 allowGlobalChanges를 true로 설정하세요. 기존 전체 채널과 설정에 영향을 주므로 운영 서버에서는 주의하세요.",
+      "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+        "if (String(pm.variables.get('allowGlobalChanges')) !== 'true') { console.warn('전체 변경 생략: allowGlobalChanges=true 필요'); pm.execution.skipRequest(); }"
+      ] } }],
+      "item": [
+        {
+          "name": "전체 설정 교체",
+          "request": {
+            "method": "PUT", "header": [{ "key": "X-RTSPCaster-Client", "value": "web" }, { "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/settings",
+            "body": { "mode": "raw", "raw": "{\n  \"mediaMtxHost\": \"{{mediaMtxHost}}\",\n  \"mediaMtxPort\": {{mediaMtxPort}},\n  \"bulkRtspTemplate\": \"{{rtspTemplate}}\",\n  \"autoRestartEnabled\": true,\n  \"maxAutoRestartAttempts\": 3,\n  \"autoRestartBaseDelaySeconds\": 2,\n  \"autoRestartResetThresholdSeconds\": 30\n}", "options": { "raw": { "language": "json" } } },
+            "description": "부분 수정이 아닌 전체 교체입니다. 먼저 설정 조회로 기존 값을 확인하고 Body를 조정하세요. MediaMTX 기본 주소 변경은 신규 채널과 연결 모니터에 적용됩니다. 기존 채널은 endpoint 또는 템플릿 API로 변경합니다."
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('설정 반영', () => { const body = pm.response.json(); pm.expect(body.mediaMtxHost).to.equal(pm.variables.get('mediaMtxHost')); pm.expect(body.mediaMtxPort).to.equal(Number(pm.variables.get('mediaMtxPort'))); });"
+          ] } }]
+        },
+        {
+          "name": "RTSP 템플릿 전체 적용",
+          "request": {
+            "method": "POST", "header": [{ "key": "X-RTSPCaster-Client", "value": "web" }, { "key": "Content-Type", "value": "application/json" }], "url": "{{baseUrl}}/api/rtsp-template/apply",
+            "body": { "mode": "raw", "raw": "{ \"template\": \"{{rtspTemplate}}\" }", "options": { "raw": { "language": "json" } } },
+            "description": "준비/변환/송출/중지 중인 채널은 skipped에 포함됩니다. 잘못된 템플릿 또는 중복 URL은 400/409로 거부됩니다."
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('200 OK', () => pm.response.to.have.status(200));",
+            "pm.test('변경 및 제외 채널 반환', () => { const body = pm.response.json(); pm.expect(body.updated).to.be.an('array'); pm.expect(body.skipped).to.be.an('array'); });"
+          ] } }]
+        },
+        {
+          "name": "모든 채널 송출 시작",
+          "request": { "method": "POST", "header": [{ "key": "X-RTSPCaster-Client", "value": "web" }], "url": "{{baseUrl}}/api/channels/start-all" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('202 Accepted', () => pm.response.to.have.status(202));",
+            "pm.test('채널별 접수 결과', () => { const rows = pm.response.json(); pm.expect(rows).to.be.an('array'); rows.forEach(row => pm.expect(row.accepted).to.be.a('boolean')); });",
+            "if (pm.response.code === 202) console.log('미접수 채널:', pm.response.json().filter(row => !row.accepted));"
+          ] } }]
+        },
+        {
+          "name": "모든 채널 송출 중지",
+          "request": { "method": "POST", "header": [{ "key": "X-RTSPCaster-Client", "value": "web" }], "url": "{{baseUrl}}/api/channels/stop-all" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('204 No Content', () => pm.response.to.have.status(204));"] } }]
+        }
+      ]
+    },
+    {
+      "name": "05. 오류 응답 검증 (상태 변경 없음)",
+      "item": [
+        {
+          "name": "없는 채널 → 404",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/channels/0" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+            "pm.test('ProblemDetails', () => { pm.expect(pm.response.headers.get('Content-Type')).to.include('application/problem+json'); pm.expect(pm.response.json().status).to.equal(404); });"
+          ] } }]
+        },
+        {
+          "name": "음수 로그 cursor → 400",
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/logs?after=-1" },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+            "pm.test('ProblemDetails', () => pm.expect(pm.response.json().status).to.equal(400));"
+          ] } }]
+        },
+        {
+          "name": "변경 요청 헤더 누락 → 403",
+          "request": { "method": "POST", "header": [], "url": "{{baseUrl}}/api/mediamtx/check", "description": "X-RTSPCaster-Client 헤더를 의도적으로 생략합니다. 연결 확인 API로 안전하게 403 정책을 검증합니다." },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('403 Forbidden', () => pm.response.to.have.status(403));",
+            "pm.test('ProblemDetails', () => pm.expect(pm.response.json().status).to.equal(403));"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "06. 채널 삭제 (기본 비활성)",
+      "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+        "if (String(pm.variables.get('allowDelete')) !== 'true') { console.warn('삭제 생략: allowDelete=true 필요'); pm.execution.skipRequest(); }"
+      ] } }],
+      "item": [
+        {
+          "name": "선택 채널 삭제",
+          "request": { "method": "DELETE", "header": [{ "key": "X-RTSPCaster-Client", "value": "web" }], "url": "{{baseUrl}}/api/channels/{{channelId}}", "description": "준비/송출을 중지하고 채널 등록을 삭제합니다. 원본 파일과 변환 캐시는 보존됩니다." },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('204 No Content', () => pm.response.to.have.status(204));",
+            "if (pm.response.code === 204) pm.collectionVariables.unset('channelId');"
+          ] } }]
+        }
+      ]
+    },
+    {
+      "name": "07. SSE (수동 실행 전용)",
+      "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": [
+        "if (String(pm.variables.get('enableSse')) !== 'true') { console.warn('SSE 생략: 수동 테스트 시에만 enableSse=true로 설정하세요.'); pm.execution.skipRequest(); }"
+      ] } }],
+      "item": [
+        {
+          "name": "실시간 snapshot 이벤트",
+          "request": { "method": "GET", "header": [{ "key": "Accept", "value": "text/event-stream" }], "url": "{{baseUrl}}/api/events", "description": "enableSse=true 설정 후 단독으로 Send하세요. 연결 직후와 약 1초마다 event: snapshot과 JSON data가 전달됩니다. 지속 연결이므로 응답 종료를 기다리는 자동 테스트는 넣지 않았습니다. 확인 후 Cancel을 누르고 enableSse=false로 복원하세요. SSE 연결 종료는 송출을 중지하지 않습니다." }
+        }
+      ]
+    }
+  ]
+}

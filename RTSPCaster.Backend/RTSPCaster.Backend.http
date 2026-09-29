@@ -1,0 +1,99 @@
+@host = http://localhost:5058
+@channelId = 1
+
+### 전체 상태
+GET {{host}}/api/status
+
+### 채널 목록
+GET {{host}}/api/channels
+
+### 파일 업로드: sample.mp4를 실제 파일 경로로 교체
+POST {{host}}/api/channels/upload
+X-RTSPCaster-Client: web
+Content-Type: multipart/form-data; boundary=RTSPCasterBoundary
+
+--RTSPCasterBoundary
+Content-Disposition: form-data; name="files"; filename="sample.mp4"
+Content-Type: video/mp4
+
+< ./sample.mp4
+--RTSPCasterBoundary--
+
+### 설정 조회
+GET {{host}}/api/settings
+
+### 전체 설정 교체: 원격 재생 시 mediaMtxHost는 접근 가능한 서버 IP/DNS로 지정
+PUT {{host}}/api/settings
+X-RTSPCaster-Client: web
+Content-Type: application/json
+
+{
+  "mediaMtxHost": "127.0.0.1",
+  "mediaMtxPort": 8554,
+  "bulkRtspTemplate": "rtsp://{host}:{port}/web_{index:D3}",
+  "autoRestartEnabled": true,
+  "maxAutoRestartAttempts": 3,
+  "autoRestartBaseDelaySeconds": 2,
+  "autoRestartResetThresholdSeconds": 30
+}
+
+### MediaMTX 연결 확인
+POST {{host}}/api/mediamtx/check
+X-RTSPCaster-Client: web
+
+### 채널 상세
+GET {{host}}/api/channels/{{channelId}}
+
+### 채널 URL 변경
+PUT {{host}}/api/channels/{{channelId}}/endpoint
+X-RTSPCaster-Client: web
+Content-Type: application/json
+
+{
+  "rtspPath": "web_001",
+  "mediaMtxHost": "127.0.0.1",
+  "mediaMtxPort": 8554
+}
+
+### 송출 준비 시작 (202 후 상태 확인)
+POST {{host}}/api/channels/{{channelId}}/start
+X-RTSPCaster-Client: web
+
+### RTSP 주소 반환
+GET {{host}}/api/channels/{{channelId}}/url
+
+### 준비 취소 / 송출 중지
+POST {{host}}/api/channels/{{channelId}}/stop
+X-RTSPCaster-Client: web
+
+### 전체 시작
+POST {{host}}/api/channels/start-all
+X-RTSPCaster-Client: web
+
+### 전체 중지
+POST {{host}}/api/channels/stop-all
+X-RTSPCaster-Client: web
+
+### 템플릿 도움말
+GET {{host}}/api/rtsp-template/help
+
+### 템플릿 전체 적용
+POST {{host}}/api/rtsp-template/apply
+X-RTSPCaster-Client: web
+Content-Type: application/json
+
+{ "template": "rtsp://{host}:{port}/web_{index:D3}" }
+
+### 최근 로그
+GET {{host}}/api/logs?after=0
+
+### 실시간 스냅샷 (연결 유지)
+GET {{host}}/api/events
+Accept: text/event-stream
+
+### 채널 삭제 (원본/캐시는 보존)
+DELETE {{host}}/api/channels/{{channelId}}
+X-RTSPCaster-Client: web
+
+### OpenAPI
+GET {{host}}/openapi/v1.json

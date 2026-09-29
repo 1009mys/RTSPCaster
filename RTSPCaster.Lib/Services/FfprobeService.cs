@@ -11,6 +11,12 @@ namespace RTSPCaster.Services;
 
 public class FfprobeService
 {
+    private readonly ChildProcessTracker? _tracker;
+
+    public FfprobeService() { }
+
+    public FfprobeService(ChildProcessTracker tracker) => _tracker = tracker;
+
     private static readonly string[] CompatibleVideoCodecs = { "h264", "hevc", "h265" };
     private static readonly string[] CompatibleAudioCodecs = { "aac", "mp3", "opus" };
 
@@ -39,12 +45,27 @@ public class FfprobeService
             psi.ArgumentList.Add(arg);
 
         using var proc = new Process { StartInfo = psi };
+        ct.ThrowIfCancellationRequested();
         proc.Start();
+        using var cancellation = ct.Register(() =>
+        {
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+            catch (System.ComponentModel.Win32Exception) { }
+        });
+        try { _tracker?.Track(proc); }
+        catch
+        {
+            try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); }
+            catch (InvalidOperationException) { }
+            throw;
+        }
         var stdoutTask = proc.StandardOutput.ReadToEndAsync();
         var stderrTask = proc.StandardError.ReadToEndAsync();
-        await proc.WaitForExitAsync(ct).ConfigureAwait(false);
+        await proc.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false);
         var stdout = await stdoutTask.ConfigureAwait(false);
         var stderr = await stderrTask.ConfigureAwait(false);
+        ct.ThrowIfCancellationRequested();
 
         if (proc.ExitCode != 0)
             throw new InvalidOperationException($"ffprobe failed: {stderr}");

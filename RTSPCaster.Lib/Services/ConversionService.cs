@@ -23,9 +23,15 @@ public class ConversionService
     public string CacheDirectory { get; set; } = AppStoragePaths.ConversionCacheDirectory;
 
     public ConversionService(SqliteService db, ChildProcessTracker? tracker = null)
+        : this(db, tracker, AppStoragePaths.ConversionCacheDirectory)
+    {
+    }
+
+    public ConversionService(SqliteService db, ChildProcessTracker? tracker, string cacheDirectory)
     {
         _db = db;
         _tracker = tracker;
+        CacheDirectory = cacheDirectory;
         Directory.CreateDirectory(CacheDirectory);
     }
 
