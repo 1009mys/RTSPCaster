@@ -165,6 +165,7 @@ public partial class MainViewModel : ObservableObject
 {
     private readonly record struct StreamHealthSample(double Fps, double BitrateKbps, double Speed, double? MediaSeconds);
     private const string VlcPlayerPathSettingKey = "VlcPlayerPath";
+    private const string BulkRtspTemplateSettingKey = "BulkRtspTemplate";
     private const string AutoRestartEnabledSettingKey = "AutoRestartEnabled";
     private const string MaxAutoRestartAttemptsSettingKey = "MaxAutoRestartAttempts";
     private const string AutoRestartBaseDelaySecondsSettingKey = "AutoRestartBaseDelaySeconds";
@@ -221,6 +222,10 @@ public partial class MainViewModel : ObservableObject
         VlcPlayerPath = _db.GetSetting(VlcPlayerPathSettingKey)
             ?? ToolLocator.Find("vlc.exe")
             ?? string.Empty;
+
+        var savedRtspTemplate = _db.GetSetting(BulkRtspTemplateSettingKey);
+        if (!string.IsNullOrWhiteSpace(savedRtspTemplate))
+            BulkRtspTemplate = savedRtspTemplate;
 
         LoadRestartPolicySettings();
         ApplyRestartPolicySettings(saveToDb: false, writeLog: false);
@@ -514,6 +519,8 @@ public partial class MainViewModel : ObservableObject
             vm.NotifyRtspPathChanged();
             updated++;
         }
+        _db.SetSetting(BulkRtspTemplateSettingKey, template);
+        BulkRtspTemplate = template;
         AppendLog($"[bulk] RTSP 템플릿 일괄 적용 (템플릿='{template}', 변경 {updated}, 송출 중 제외 {skipped}, 실패 {invalid})");
     }
     public IAsyncRelayCommand StartAllCommand => new AsyncRelayCommand(StartAllAsync);

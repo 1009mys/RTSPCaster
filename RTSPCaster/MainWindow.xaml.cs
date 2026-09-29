@@ -1,5 +1,6 @@
 ﻿using System.Collections.Specialized;
 using System.Windows;
+using System.Windows.Controls;
 using System.Linq;
 using System.Windows.Input;
 using System.Windows.Threading;
@@ -10,6 +11,8 @@ namespace RTSPCaster
     public partial class MainWindow : Window
     {
         public static readonly RoutedUICommand CopyLogsCommand = new("CopyLogs", "CopyLogs", typeof(MainWindow));
+        private bool _autoScrollLogs = true;
+
         public MainWindow(MainViewModel vm)
         {
             InitializeComponent();
@@ -48,14 +51,23 @@ namespace RTSPCaster
             }
         }
 
+        private void LogList_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            if (e.OriginalSource is not ScrollViewer scrollViewer) return;
+
+            // 로그 추가나 창 크기 변경이 아닌 세로 스크롤에서만 하단 추적 상태를 갱신한다.
+            if (e.ExtentHeightChange == 0 && e.ViewportHeightChange == 0 && e.VerticalChange != 0)
+                _autoScrollLogs = scrollViewer.VerticalOffset >= scrollViewer.ScrollableHeight - 0.001;
+        }
+
         private void Logs_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
         {
-            if (e.Action != NotifyCollectionChangedAction.Add) return;
+            if (e.Action != NotifyCollectionChangedAction.Add || !_autoScrollLogs) return;
 
             // ItemContainerGenerator가 컬렉션 변경을 반영한 뒤에 스크롤하도록 지연.
             Dispatcher.BeginInvoke(new System.Action(() =>
             {
-                if (LogList.Items.Count == 0) return;
+                if (!_autoScrollLogs || LogList.Items.Count == 0) return;
                 LogList.ScrollIntoView(LogList.Items[LogList.Items.Count - 1]!);
             }), DispatcherPriority.Background);
         }
