@@ -28,10 +28,10 @@
     },
     "WSL": {
       "commandName": "WSL2",
-      "launchUrl": "https://0.0.0.0:7035",
+      "launchUrl": "http://localhost:5058",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ASPNETCORE_URLS": "https://0.0.0.0:7035;http://0.0.0.0:5058"
+        "ASPNETCORE_URLS": "http://0.0.0.0:5058"
       },
       "distributionName": ""
     }

@@ -28,6 +28,9 @@ public sealed class CasterController(CasterService caster, BackendOptions option
     [HttpGet("channels/{id:int}/url")]
     public IActionResult GetRtspUrl(int id) => Ok(new { rtspUrl = caster.GetChannel(id).RtspUrl });
 
+    [HttpGet("uploads/limits")]
+    public IActionResult UploadLimits() => Ok(new { maxUploadBytes = options.MaxUploadBytes });
+
     [HttpPost("channels/upload")]
     [Consumes("multipart/form-data")]
     public async Task<ActionResult<UploadResult[]>> Upload([FromForm] List<IFormFile> files, CancellationToken ct)

@@ -159,6 +159,8 @@ try
             Assert(response.StatusCode == HttpStatusCode.OK, "remote server hostname allowed without authentication");
         }
         Assert((await Get<ChannelSnapshot[]>(client, "/api/channels")).Length == 0, "isolated empty channel store");
+        var uploadLimits = await Get<JsonElement>(client, "/api/uploads/limits");
+        Assert(uploadLimits.GetProperty("maxUploadBytes").GetInt64() == 1048576, "upload limits reflect configured maximum");
         var settings = new CasterSettings { MediaMtxPort = port, AutoRestartBaseDelaySeconds = 1 };
         await Expect(client, HttpMethod.Put, "/api/settings", HttpStatusCode.OK, settings);
         await Expect(client, HttpMethod.Put, "/api/settings", HttpStatusCode.BadRequest, settings with { MediaMtxPort = 0 });
@@ -179,8 +181,16 @@ try
             using var response = await client.PostAsync("/api/channels/upload", form);
             Assert(!response.IsSuccessStatusCode, "oversized upload rejected");
         }
-        var first = await Upload(client, "../sample.mp4", "valid");
-        var second = await Upload(client, "sample.mp4", "valid");
+        using (var form = new MultipartFormDataContent())
+        {
+            form.Add(new ByteArrayContent(new byte[600 * 1024]), "files", "first.mp4");
+            form.Add(new ByteArrayContent(new byte[600 * 1024]), "files", "second.mp4");
+            using var response = await client.PostAsync("/api/channels/upload", form);
+            Assert(response.StatusCode == HttpStatusCode.RequestEntityTooLarge, "combined files exceeding request limit rejected");
+        }
+        var first = await Upload(client, "../sample.mp4", new string('v', 600 * 1024));
+        var second = await Upload(client, "sample.mp4", new string('v', 600 * 1024));
+        Assert(first.Video.FileSize + second.Video.FileSize > 1048576, "separate uploads succeed when combined size exceeds request limit");
         persistedId = first.Id;
         Assert(first.Video.FileName == "sample.mp4" && first.RtspPath != second.RtspPath, "safe filename and unique generated RTSP paths");
         await Expect(client, HttpMethod.Put, $"/api/channels/{second.Id}/endpoint", HttpStatusCode.Conflict,

@@ -51,6 +51,8 @@
 
 업로드는 ASP.NET Core multipart 버퍼링을 사용합니다. 큰 요청은 임시 디스크 공간도 필요하며, 앞단 프록시가 있다면 프록시의 업로드 크기/시간 제한도 맞춰야 합니다. 요청당 최대 50개 파일을 순서대로 검사합니다. 파일 하나의 ffprobe 검사는 최대 60초입니다. 등록 응답이 끝나기 전에 요청을 취소하면 아직 등록하지 않은 파일은 정리되며, 이미 등록된 파일/채널은 유지됩니다.
 
+웹 Frontend는 `/api/uploads/limits`에서 크기 제한을 확인한 후 파일당 요청 한 개씩 순차 전송합니다. 따라서 선택 파일 합계가 제한을 넘더라도 각 파일이 제한 이내라면 업로드할 수 있습니다. API를 직접 호출하여 여러 파일을 한 요청에 넣으면 기존 요청 합계 제한이 그대로 적용됩니다.
+
 ## API
 
 JSON 속성명은 camelCase이며 상태 enum은 문자열입니다. `RTSPCaster.Backend.http`에 요청 예제가 있습니다.
@@ -60,6 +62,7 @@ JSON 속성명은 camelCase이며 상태 enum은 문자열입니다. `RTSPCaster
 | GET | `/api/status` | 설정, MediaMTX 상태, 모든 채널, 최근 로그 스냅샷 |
 | GET | `/api/channels` | 채널 목록과 메타데이터·진행률·품질 |
 | GET | `/api/channels/{id}` | 채널 상세 |
+| GET | `/api/uploads/limits` | `{ "maxUploadBytes": 2147483648 }`: 현재 요청 내 파일 합계 제한 |
 | POST | `/api/channels/upload` | multipart `files` 필드로 한 개 이상 업로드·검사·채널 등록 |
 | PUT | `/api/channels/{id}/endpoint` | `rtspPath`, `mediaMtxHost`, `mediaMtxPort` 변경 |
 | GET | `/api/channels/{id}/url` | `{ "rtspUrl": "rtsp://..." }` 반환 |
