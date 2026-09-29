@@ -125,6 +125,7 @@
             <DataGrid Grid.Row="0" ItemsSource="{Binding Channels}" AutoGenerateColumns="False"
                       CanUserAddRows="False" HeadersVisibility="Column">
                 <DataGrid.Columns>
+                    <DataGridTextColumn Header="번호" Binding="{Binding Channel.Id}" Width="60" IsReadOnly="True"/>
                     <DataGridTextColumn Header="채널" Binding="{Binding Name}" Width="140" IsReadOnly="True"/>
                     <DataGridTextColumn Header="파일" Binding="{Binding FileName}" Width="200" IsReadOnly="True"/>
                     <DataGridTextColumn Header="해상도" Binding="{Binding Resolution}" Width="90" IsReadOnly="True"/>

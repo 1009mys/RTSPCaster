@@ -182,7 +182,7 @@ public partial class MainViewModel : ObservableObject
     private static readonly System.Text.RegularExpressions.Regex FpsRegex = new(@"fps=\s*(?<v>[0-9]+(?:\.[0-9]+)?)", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     private static readonly System.Text.RegularExpressions.Regex BitrateRegex = new(@"bitrate=\s*(?<v>[0-9]+(?:\.[0-9]+)?)\s*(?<u>bits/s|kbits/s|mbits/s)", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     private static readonly System.Text.RegularExpressions.Regex SpeedRegex = new(@"speed=\s*(?<v>[0-9]+(?:\.[0-9]+)?)x", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-    private static readonly System.Text.RegularExpressions.Regex TimeRegex = new(@"time=\s*(?<v>\d{2}:\d{2}:\d{2}(?:\.\d{1,2})?)", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    private static readonly System.Text.RegularExpressions.Regex TimeRegex = new(@"time=\s*(?<v>\d{2}:\d{2}:\d{2}(?:\.\d+)?)", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     public System.Collections.ObjectModel.ObservableCollection<ChannelViewModel> Channels { get; } = new();
     public System.Collections.ObjectModel.ObservableCollection<string> Logs { get; } = new();
@@ -278,8 +278,9 @@ public partial class MainViewModel : ObservableObject
     private void TryUpdateChannelHealth(int channelId, string line)
     {
         if (!TryParseHealthSample(line, out var sample)) return;
+        var receivedAt = DateTime.UtcNow;
 
-        Application.Current?.Dispatcher.Invoke(() =>
+        DispatchToUi(() =>
         {
             ChannelViewModel? vm = null;
             foreach (var c in Channels)
@@ -288,18 +289,19 @@ public partial class MainViewModel : ObservableObject
                 vm = c;
                 break;
             }
-            if (vm is null) return;
+            if (vm is null || vm.Status != StreamStatus.Streaming) return;
 
             if (!_streamStartUtcByChannel.TryGetValue(channelId, out var startedAt))
             {
-                startedAt = DateTime.UtcNow;
+                startedAt = receivedAt;
                 _streamStartUtcByChannel[channelId] = startedAt;
             }
+            if (receivedAt < startedAt) return;
 
             double? latencyMs = null;
             if (sample.MediaSeconds.HasValue)
             {
-                var elapsedSeconds = (DateTime.UtcNow - startedAt).TotalSeconds;
+                var elapsedSeconds = (receivedAt - startedAt).TotalSeconds;
                 latencyMs = Math.Max(0, (elapsedSeconds - sample.MediaSeconds.Value) * 1000d);
             }
 
@@ -891,12 +893,11 @@ public partial class MainViewModel : ObservableObject
     private async Task StartAllAsync()
     {
         AppendLog($"[bulk] 전체 시작 ({Channels.Count}개)");
-        // 순차 실행: 변환이 동시에 진행되면 CPU 부하가 심하고, 각 채널 상태를 명확히 파악할 수 있다.
-        foreach (var vm in Channels.ToList())
-        {
-            if (_streaming.IsStreaming(vm.Channel.Id)) continue;
-            await StartChannelAsync(vm).ConfigureAwait(true);
-        }
+        var channelsToStart = Channels
+            .Where(vm => !_streaming.IsStreaming(vm.Channel.Id))
+            .ToList();
+
+        await Task.WhenAll(channelsToStart.Select(StartChannelAsync)).ConfigureAwait(true);
     }
 
     private void StopAll()
@@ -910,7 +911,8 @@ public partial class MainViewModel : ObservableObject
 
     private void OnStreamStatusChanged(object? sender, StreamEventArgs e)
     {
-        Application.Current?.Dispatcher.Invoke(() =>
+        var changedAt = DateTime.UtcNow;
+        DispatchToUi(() =>
         {
             foreach (var c in Channels)
             {
@@ -921,7 +923,7 @@ public partial class MainViewModel : ObservableObject
                     switch (e.Status)
                     {
                         case StreamStatus.Streaming:
-                            _streamStartUtcByChannel[e.ChannelId] = DateTime.UtcNow;
+                            _streamStartUtcByChannel[e.ChannelId] = changedAt;
                             c.ResetHealth("수집 중...");
                             break;
                         case StreamStatus.Stopping:
@@ -953,7 +955,7 @@ public partial class MainViewModel : ObservableObject
 
     private void OnConversionProgress(object? sender, ConversionProgressEventArgs e)
     {
-        Application.Current?.Dispatcher.Invoke(() =>
+        DispatchToUi(() =>
         {
             foreach (var c in Channels)
                 if (c.Status == StreamStatus.Converting)
@@ -963,11 +965,22 @@ public partial class MainViewModel : ObservableObject
 
     private void AppendLog(string message)
     {
-        Application.Current?.Dispatcher.Invoke(() =>
+        DispatchToUi(() =>
         {
             Logs.Add($"{DateTime.Now:HH:mm:ss} {message}");
             while (Logs.Count > 500) Logs.RemoveAt(0);
         });
+    }
+
+    private static void DispatchToUi(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished) return;
+
+        if (dispatcher.CheckAccess())
+            action();
+        else
+            _ = dispatcher.InvokeAsync(action);
     }
 
     public void ShutdownAll()
