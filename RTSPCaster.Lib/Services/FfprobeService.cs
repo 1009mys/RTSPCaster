@@ -14,6 +14,12 @@ public class FfprobeService
     private static readonly string[] CompatibleVideoCodecs = { "h264", "hevc", "h265" };
     private static readonly string[] CompatibleAudioCodecs = { "aac", "mp3", "opus" };
 
+    public static bool IsVideoCodecCompatible(string? codec) =>
+        !string.IsNullOrEmpty(codec) && Array.IndexOf(CompatibleVideoCodecs, codec.ToLowerInvariant()) >= 0;
+
+    public static bool IsAudioCodecCompatible(string? codec) =>
+        !string.IsNullOrEmpty(codec) && Array.IndexOf(CompatibleAudioCodecs, codec.ToLowerInvariant()) >= 0;
+
     public string FfprobePath { get; set; } = ToolLocator.Find(ToolLocator.ExecutableName("ffprobe")) ?? ToolLocator.ExecutableName("ffprobe");
 
     public async Task<ProbeResult> ProbeAsync(string filePath, CancellationToken ct = default)
@@ -82,13 +88,13 @@ public class FfprobeService
         {
             reasons.Append("video stream missing; ");
         }
-        else if (Array.IndexOf(CompatibleVideoCodecs, result.VideoCodec.ToLowerInvariant()) < 0)
+        else if (!IsVideoCodecCompatible(result.VideoCodec))
         {
             reasons.Append($"video codec '{result.VideoCodec}' not RTSP-compatible; ");
         }
 
         if (!string.IsNullOrEmpty(result.AudioCodec) &&
-            Array.IndexOf(CompatibleAudioCodecs, result.AudioCodec.ToLowerInvariant()) < 0)
+            !IsAudioCodecCompatible(result.AudioCodec))
         {
             reasons.Append($"audio codec '{result.AudioCodec}' not RTSP-compatible; ");
         }
