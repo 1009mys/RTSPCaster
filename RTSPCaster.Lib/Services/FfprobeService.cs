@@ -14,7 +14,7 @@ public class FfprobeService
     private static readonly string[] CompatibleVideoCodecs = { "h264", "hevc", "h265" };
     private static readonly string[] CompatibleAudioCodecs = { "aac", "mp3", "opus" };
 
-    public string FfprobePath { get; set; } = ToolLocator.Find("ffprobe.exe") ?? "ffprobe.exe";
+    public string FfprobePath { get; set; } = ToolLocator.Find(ToolLocator.ExecutableName("ffprobe")) ?? ToolLocator.ExecutableName("ffprobe");
 
     public async Task<ProbeResult> ProbeAsync(string filePath, CancellationToken ct = default)
     {
@@ -24,12 +24,13 @@ public class FfprobeService
         var psi = new ProcessStartInfo
         {
             FileName = FfprobePath,
-            Arguments = $"-v error -print_format json -show_streams -show_format \"{filePath}\"",
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        foreach (var arg in new[] { "-v", "error", "-print_format", "json", "-show_streams", "-show_format", filePath })
+            psi.ArgumentList.Add(arg);
 
         using var proc = new Process { StartInfo = psi };
         proc.Start();

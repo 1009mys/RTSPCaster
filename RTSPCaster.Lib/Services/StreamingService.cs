@@ -34,7 +34,7 @@ public class StreamingService : IDisposable
     private readonly ChildProcessTracker _tracker;
     private readonly SqliteService _db;
 
-    public string FfmpegPath { get; set; } = ToolLocator.Find("ffmpeg.exe") ?? "ffmpeg.exe";
+    public string FfmpegPath { get; set; } = ToolLocator.Find(ToolLocator.ExecutableName("ffmpeg")) ?? ToolLocator.ExecutableName("ffmpeg");
     public bool AutoRestartEnabled { get; set; } = true;
     public int MaxAutoRestartAttempts { get; set; } = 3;
     public TimeSpan AutoRestartBaseDelay { get; set; } = TimeSpan.FromSeconds(2);
@@ -82,17 +82,16 @@ public class StreamingService : IDisposable
         ctx.RtspBadRequestOnHeader = false;
         SetStatus(ctx, StreamStatus.Streaming, restartMessage);
 
-        var args = $"-re -stream_loop -1 -i \"{ctx.SourceFilePath}\" -c copy -f rtsp -rtsp_transport tcp \"{channel.RtspUrl}\"";
-
         var psi = new ProcessStartInfo
         {
             FileName = FfmpegPath,
-            Arguments = args,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        foreach (var arg in new[] { "-re", "-stream_loop", "-1", "-i", ctx.SourceFilePath, "-c", "copy", "-f", "rtsp", "-rtsp_transport", "tcp", channel.RtspUrl })
+            psi.ArgumentList.Add(arg);
 
         var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
         ctx.Process = proc;

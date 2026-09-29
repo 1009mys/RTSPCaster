@@ -5,6 +5,8 @@ namespace RTSPCaster.Services;
 
 public static class ToolLocator
 {
+    public static string ExecutableName(string name) => OperatingSystem.IsWindows() ? name + ".exe" : name;
+
     public static string? Find(string exeName)
     {
         var baseDir = AppContext.BaseDirectory;

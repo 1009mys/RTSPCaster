@@ -1,19 +1,28 @@
 using System;
 using System.ComponentModel;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
 namespace RTSPCaster.Services;
 
-// Ensures that all associated child processes are terminated when the parent exits.
+// Windows uses a Job Object; on other platforms tracked processes are stopped on orderly shutdown.
 public sealed class ChildProcessTracker : IDisposable
 {
-    private readonly SafeFileHandle _job;
+    private readonly SafeFileHandle? _job;
+    private readonly HashSet<Process> _processes = new();
+    private readonly object _sync = new();
     private bool _disposed;
 
     public ChildProcessTracker()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+            return;
+        }
+
         _job = CreateJobObject(IntPtr.Zero, null!);
         if (_job.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
 
@@ -35,16 +44,70 @@ public sealed class ChildProcessTracker : IDisposable
 
     public void Track(Process process)
     {
-        if (process.HasExited) return;
-        if (!AssignProcessToJobObject(_job, process.Handle))
-            throw new Win32Exception(Marshal.GetLastWin32Error());
+        ArgumentNullException.ThrowIfNull(process);
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (process.HasExited) return;
+            if (_job != null)
+            {
+                if (!AssignProcessToJobObject(_job, process.Handle))
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                return;
+            }
+
+            process.EnableRaisingEvents = true;
+            process.Exited += OnChildExited;
+            if (process.HasExited)
+            {
+                process.Exited -= OnChildExited;
+                return;
+            }
+            _processes.Add(process);
+        }
     }
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        _job.Dispose();
+        lock (_sync)
+        {
+            if (_disposed) return;
+            _disposed = true;
+        }
+        if (_job != null)
+        {
+            _job.Dispose();
+            return;
+        }
+
+        AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
+        lock (_sync)
+        {
+            foreach (var process in _processes)
+            {
+                process.Exited -= OnChildExited;
+                try
+                {
+                    if (!process.HasExited) process.Kill(entireProcessTree: true);
+                }
+                catch (ObjectDisposedException) { }
+                catch (InvalidOperationException) { } // Process already exited.
+                catch (Win32Exception) { } // Process already exited or cannot be signaled.
+            }
+            _processes.Clear();
+        }
+    }
+
+    private void OnProcessExit(object? sender, EventArgs args) => Dispose();
+
+    private void OnChildExited(object? sender, EventArgs args)
+    {
+        if (sender is not Process process) return;
+        lock (_sync)
+        {
+            _processes.Remove(process);
+            process.Exited -= OnChildExited;
+        }
     }
 
     private const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000;

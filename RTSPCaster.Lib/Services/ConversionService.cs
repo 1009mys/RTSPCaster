@@ -19,8 +19,8 @@ public class ConversionService
 {
     private readonly SqliteService _db;
     private readonly ChildProcessTracker? _tracker;
-    public string FfmpegPath { get; set; } = ToolLocator.Find("ffmpeg.exe") ?? "ffmpeg.exe";
-    public string CacheDirectory { get; set; } = Path.Combine(AppContext.BaseDirectory, "converted");
+    public string FfmpegPath { get; set; } = ToolLocator.Find(ToolLocator.ExecutableName("ffmpeg")) ?? ToolLocator.ExecutableName("ffmpeg");
+    public string CacheDirectory { get; set; } = AppStoragePaths.ConversionCacheDirectory;
 
     public ConversionService(SqliteService db, ChildProcessTracker? tracker = null)
     {
@@ -66,12 +66,13 @@ public class ConversionService
         var psi = new ProcessStartInfo
         {
             FileName = FfmpegPath,
-            Arguments = $"-y -i \"{file.FilePath}\" -c:v libx264 -preset veryfast -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart \"{outPath}\"",
             RedirectStandardError = true,
             RedirectStandardOutput = true,
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+        foreach (var arg in new[] { "-y", "-i", file.FilePath, "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", outPath })
+            psi.ArgumentList.Add(arg);
 
         using var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
         proc.ErrorDataReceived += (_, e) =>

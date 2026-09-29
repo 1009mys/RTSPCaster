@@ -3,6 +3,7 @@
     <Platform Name="Any CPU" />
     <Platform Name="x64" />
   </Configurations>
+  <Project Path="RTSPCaster.Lib.SmokeTests/RTSPCaster.Lib.SmokeTests.csproj" />
   <Project Path="RTSPCaster.Lib/RTSPCaster.Lib.csproj" Id="6196de48-2b7e-4966-a410-df3bf293216c" />
   <Project Path="RTSPCaster/RTSPCaster.Win.csproj">
     <Platform Solution="*|x64" Project="x64" />

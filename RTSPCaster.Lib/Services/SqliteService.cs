@@ -12,8 +12,12 @@ public class SqliteService
 
     public SqliteService(string? dbPath = null)
     {
-        dbPath ??= Path.Combine(AppContext.BaseDirectory, "rtspcaster.db");
-        _connectionString = $"Data Source={dbPath}";
+        if (dbPath == null)
+        {
+            dbPath = AppStoragePaths.DatabasePath;
+            Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+        }
+        _connectionString = new SqliteConnectionStringBuilder { DataSource = dbPath }.ToString();
         Initialize();
     }
 
