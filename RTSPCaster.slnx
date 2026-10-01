@@ -5,7 +5,7 @@
   </Configurations>
   <Project Path="RTSPCaster.Backend.SmokeTests/RTSPCaster.Backend.SmokeTests.csproj" />
   <Project Path="RTSPCaster.Backend/RTSPCaster.Backend.csproj" Id="82c72199-85a7-49d4-b1e4-67dfc085f311" />
-  <Project Path="RTSPCaster.Frontend/rtspcaster.frontend.esproj">
+  <Project Path="RTSPCaster.Frontend/rtspcaster.frontend.esproj" DisplayName="RTSPCaster.Frontend">
     <Platform Project="AnyCPU" />
     <Build />
     <Deploy />
