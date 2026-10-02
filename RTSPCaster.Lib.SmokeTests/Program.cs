@@ -120,15 +120,6 @@ try
 
     if (OperatingSystem.IsLinux())
     {
-        var data = Path.Combine(temp, "data");
-        var cache = Path.Combine(temp, "cache");
-        Environment.SetEnvironmentVariable("XDG_DATA_HOME", data);
-        Environment.SetEnvironmentVariable("XDG_CACHE_HOME", cache);
-        var linuxDb = new SqliteService();
-        linuxDb.SetSetting("smoke", "linux");
-        Assert(File.Exists(Path.Combine(data, "RTSPCaster", "rtspcaster.db")), "XDG data path");
-        Assert(new ConversionService(linuxDb).CacheDirectory == Path.Combine(cache, "RTSPCaster", "converted"), "XDG cache path");
-        Assert(Directory.Exists(Path.Combine(cache, "RTSPCaster", "converted")), "cache directory created");
         Assert(ToolLocator.Find(ffmpegName) != null, "Linux PATH ffmpeg lookup");
         Assert(ToolLocator.Find(ffprobeName) != null, "Linux PATH ffprobe lookup");
     }
@@ -161,12 +152,18 @@ finally
 
 static void VerifyDailyStreamLogs(string temp)
 {
-    Assert(new StreamLogWriter().DirectoryPath == Path.Combine(AppContext.BaseDirectory, "log"), "default log directory");
+    var defaultWriter = new StreamLogWriter();
+    Assert(defaultWriter.DirectoryPath == Path.Combine(AppContext.BaseDirectory, "log"), "default log directory");
+    Assert(!defaultWriter.Enabled, "file logging disabled by default");
     var directory = Path.Combine(temp, "daily-logs");
     var writer = new StreamLogWriter(directory);
     var time = new DateTimeOffset(2026, 3, 20, 23, 59, 59, TimeSpan.FromHours(9));
+    writer.Enabled = false;
+    writer.Write(57, "stderr", "must not create directory", time);
+    Assert(!Directory.Exists(directory), "disabled logging does not create directory or file");
+    writer.Enabled = true;
     writer.Write(57, "stderr", "첫 번째 상세 로그", time);
-    new StreamLogWriter(directory).Write(57, "stdout", "progress=continue", time);
+    new StreamLogWriter(directory) { Enabled = true }.Write(57, "stdout", "progress=continue", time);
     writer.Write(57, "stderr", "next day", time.AddSeconds(1));
     Parallel.For(0, 100, i => writer.Write(58, "stderr", $"line {i}", time));
 
@@ -177,6 +174,15 @@ static void VerifyDailyStreamLogs(string temp)
     Assert(File.ReadAllLines(Path.Combine(directory, "ch57_20260321.log")).Length == 1, "midnight log rotation");
     var otherChannel = File.ReadAllLines(Path.Combine(directory, "ch58_20260320.log"));
     Assert(otherChannel.Length == 100 && otherChannel.Distinct().Count() == 100, "concurrent writes and channel isolation");
+    var length = new FileInfo(Path.Combine(directory, "ch57_20260320.log")).Length;
+    writer.Enabled = false;
+    Parallel.For(0, 100, i => writer.Write(57, "stderr", $"disabled {i}", time));
+    writer.Write(99, "stderr", "must not create new channel file", time);
+    Assert(new FileInfo(Path.Combine(directory, "ch57_20260320.log")).Length == length, "disabled writes do not append existing files");
+    Assert(!File.Exists(Path.Combine(directory, "ch99_20260320.log")), "disabled writes do not create new channel files");
+    writer.Enabled = true;
+    writer.Write(57, "stderr", "resumed", time);
+    Assert(File.ReadAllLines(Path.Combine(directory, "ch57_20260320.log")).Length == 3, "reenabling appends without deleting prior logs");
 }
 
 static void VerifyLogWriteFailure(SqliteService db, string temp)

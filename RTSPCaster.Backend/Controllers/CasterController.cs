@@ -111,6 +111,16 @@ public sealed class CasterController(CasterService caster, BackendOptions option
     [HttpGet("logs")]
     public LogPage Logs([FromQuery] long after = 0) => caster.Logs(after);
 
+    [HttpGet("log-files")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public LogFileList LogFiles([FromServices] BackendLogFiles files, CancellationToken ct, [FromQuery] int skip = 0) =>
+        files.List(skip, ct);
+
+    [HttpGet("log-files/content")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public Task<LogFileContent> LogFileContent([FromServices] BackendLogFiles files,
+        [FromQuery] string name, CancellationToken ct, [FromQuery] long? offset = null) => files.ReadAsync(name, offset, ct);
+
     [HttpGet("events")]
     [Produces("text/event-stream")]
     public async Task Events(CancellationToken ct)

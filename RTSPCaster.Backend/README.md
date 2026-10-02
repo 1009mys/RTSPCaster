@@ -7,7 +7,7 @@
 1. .NET 10 SDK와 FFmpeg/ffprobe를 설치합니다. 실행 파일을 PATH 또는 Backend 출력 폴더의 `tools`에 두거나 `Backend:FfmpegPath`, `Backend:FfprobePath`를 설정합니다.
 2. 외부 MediaMTX를 별도로 실행합니다. Backend가 MediaMTX 프로세스를 시작하거나 종료하지는 않습니다.
 3. 솔루션 디렉터리에서 `dotnet run --project RTSPCaster.Backend --launch-profile http`를 실행합니다.
-4. 다른 PC에서는 `http://서버IP:5058/api/status`로 접근합니다. 서버 방화벽의 TCP 5058 허용 여부를 확인하세요. 기본 바인딩은 `http://0.0.0.0:5058`입니다. `--urls`/`ASPNETCORE_URLS` 또는 `ASPNETCORE_HTTP_PORTS`로 바꿀 수 있습니다.
+4. 다른 PC에서는 `http://서버IP:5058/api/status`로 접근합니다. 서버 방화벽의 TCP 5058 허용 여부를 확인하세요. 기본 바인딩은 `appsettings.json`의 `Urls`에 설정된 `http://0.0.0.0:5058`입니다.
 5. `GET /openapi/v1.json`에서 OpenAPI 명세를 확인합니다. Swagger UI는 포함하지 않습니다.
 
 **인증·권한 검사는 없습니다.** API에 연결할 수 있는 사용자는 파일 업로드, 설정 변경, 송출 제어와 채널 삭제를 할 수 있습니다. 파일 업로드는 디스크를 사용하며, 연결 검사와 송출은 Backend 서버에서 수행됩니다. 방화벽·네트워크 노출 범위를 운영자가 결정하세요. HTTPS 프로필 사용 시 원격 클라이언트가 신뢰할 수 있고 서버 이름에 맞는 인증서가 필요합니다.
@@ -22,7 +22,7 @@
 
 ## Win과 완전히 분리된 저장소
 
-기본 저장소는 `Environment.SpecialFolder.LocalApplicationData/RTSPCaster.Backend`입니다. Windows에서는 `%LOCALAPPDATA%\RTSPCaster.Backend`입니다.
+기본 저장소는 `appsettings.json`의 `Backend:DataDirectory` 값 `.`을 기준으로 한 Backend 실행 폴더입니다. 운영 환경에서는 유지할 절대 경로를 지정하세요.
 
 | 경로 | 내용 |
 | --- | --- |
@@ -39,11 +39,12 @@
 
 ## 서버 설정
 
-`appsettings.json`의 `Backend` 항목 또는 `Backend__...` 환경변수를 사용합니다.
+`appsettings.json`의 `Urls`와 `Backend` 항목을 사용합니다. 리눅스를 포함한 모든 환경에서 실행 전에 배포 폴더의 이 파일을 수정해 설정합니다. 환경 변수는 Backend 설정을 재정의하지 않습니다.
 
 | 설정 | 기본값 / 용도 |
 | --- | --- |
-| `DataDirectory` | null: 위 전용 저장소 |
+| `Urls` | `http://0.0.0.0:5058`: API 수신 주소 |
+| `DataDirectory` | `.`: Backend 실행 폴더 기준 전용 저장소 |
 | `FfmpegPath` | null: 출력 폴더/도구 폴더/PATH에서 탐색 |
 | `FfprobePath` | null: 출력 폴더/도구 폴더/PATH에서 탐색 |
 | `MaxUploadBytes` | 2147483648 (요청 내 파일 합계 최대 2 GiB) |
@@ -71,12 +72,14 @@ JSON 속성명은 camelCase이며 상태 enum은 문자열입니다. `RTSPCaster
 | DELETE | `/api/channels/{id}` | 준비·송출 중지 후 채널 삭제; 204 반환 |
 | POST | `/api/channels/start-all` | 채널별 접수 여부/오류 배열과 202 반환 |
 | POST | `/api/channels/stop-all` | 모든 준비·송출 중지; 204 반환 |
-| GET / PUT | `/api/settings` | MediaMTX 기본 대상, 템플릿, 재시작 정책 조회/전체 교체 |
+| GET / PUT | `/api/settings` | MediaMTX 기본 대상, 템플릿, 재시작·파일 기록 정책 조회/전체 교체 |
 | GET | `/api/rtsp-template/help` | 템플릿 변수와 예제 |
 | POST | `/api/rtsp-template/apply` | `{ "template": "stream_{index:D3}" }` 일괄 적용 |
 | GET | `/api/mediamtx` | 최근 연결 검사 결과 |
 | POST | `/api/mediamtx/check` | 즉시 TCP 연결 검사 |
 | GET | `/api/logs?after=0` | 로그 ID 이후의 메모리 로그; 최근 최대 500개 |
+| GET | `/api/log-files?skip=0` | 백엔드 로그 파일 목록, 최대 100개 및 hasMore |
+| GET | `/api/log-files/content?name=ch1_20260320.log&offset=0` | 최대 64KiB UTF-8 파일 내용; offset 생략 시 최신 구간 |
 | GET | `/api/events` | SSE 스냅샷 스트림 |
 
 ### 업로드와 송출
@@ -95,6 +98,7 @@ JSON 속성명은 camelCase이며 상태 enum은 문자열입니다. `RTSPCaster
 - `mediaMtxPort`: 1~65535, 기본값 8554.
 - `bulkRtspTemplate`: 기본값 `rtsp://{host}:{port}/stream_{index}`.
 - `autoRestartEnabled`: 기본값 true.
+- `fileLoggingEnabled`: 기본값 true. .log 파일 생성 및 추가 기록 여부. 저장 즉시 적용하며 SQLite에 저장되어 재시작 후에도 유지됩니다. 끄더라도 기존 파일과 실시간 로그·헬스 수집은 유지합니다.
 - `maxAutoRestartAttempts`: 0~20, 기본값 3.
 - `autoRestartBaseDelaySeconds`: 1~120, 기본값 2.
 - `autoRestartResetThresholdSeconds`: 5~3600, 기본값 30.
@@ -104,6 +108,14 @@ JSON 속성명은 camelCase이며 상태 enum은 문자열입니다. `RTSPCaster
 템플릿은 `{host}`, `{port}`, `{index}`, `{index:D3}`, `{name}`을 지원합니다. 경로만 지정하면 각 채널의 기존 대상 호스트/포트를 유지합니다. 경로의 허용 문자 외 문자는 `_`로 바꿉니다. 준비·변환·송출·중지 중 채널은 건너뛰며 결과에 `updated`, `skipped` 채널 ID 배열을 반환합니다. 입력이 잘못되었거나 결과 URL이 중복되면 적용 전에 요청을 거부합니다.
 
 ### 실시간 상태와 로그
+
+파일 기록은 `logs/ch{채널ID}_{yyyyMMdd}.log`에 채널별 FFmpeg 상세 출력을 저장합니다. 메모리 로그와 달리 재시작 후에도 남으며, 설정을 다시 켜면 같은 채널/날짜 파일에 이어 기록합니다. 삭제·보존 기한 관리는 별도로 수행해야 합니다.
+
+파일 목록 API는 `{ files: [{ name, size, lastWriteTimeUtc }], hasMore }`를 반환합니다. 수정 시각 내림차순으로 100개씩 읽으며 `skip=100`처럼 다음 목록을 요청합니다. 기록 중에는 목록 순서가 변경될 수 있습니다.
+
+파일 내용 API는 `{ name, size, lastWriteTimeUtc, offset, nextOffset, hasMore, content }`를 반환합니다. 크기와 위치는 바이트 단위입니다. `offset=0`은 처음, 생략은 최신 구간이고 `nextOffset`을 사용하면 UTF-8 문자를 나누지 않고 다음 구간을 읽습니다. 파일이 축소되어 위치가 유효하지 않으면 409, 파일이 없으면 404입니다. 로그 행 자체는 구간 경계에서 나뉠 수 있습니다.
+
+표준 파일명만 허용하고 경로 탐색·심볼릭 링크/리파스 포인트는 거부합니다. 백엔드 전용 `logs` 폴더 밖의 파일은 조회하지 않습니다. 응답은 캐시하지 않습니다. 로그는 민감한 운영 정보를 포함할 수 있으므로 인증 프록시/신뢰 네트워크에서만 접근을 허용하고 저장소 자체의 OS 쓰기 권한도 제한하세요. Windows 앱은 별도 SQLite 설정과 기본 `log` 폴더를 사용하며 웹에서는 조회하지 않습니다.
 
 `EventSource('/api/events')`의 `snapshot` 이벤트를 구독합니다. 연결 직후와 이후 약 1초마다 `/api/status`와 같은 전체 스냅샷을 받습니다. 이벤트의 `data`는 JSON이며 JSON 문자열로 프레이밍하므로 로그 개행이 SSE 이벤트 경계를 깨지 않습니다.
 

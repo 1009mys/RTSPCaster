@@ -1,10 +1,11 @@
-import process from 'node:process'
-import { defineConfig, loadEnv } from 'vite'
+import { readFileSync } from 'node:fs'
+import { defineConfig } from 'vite'
 import plugin from '@vitejs/plugin-vue'
 
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
-  const target = env.RTSPCASTER_BACKEND_URL || 'http://127.0.0.1:5058'
+const settings = JSON.parse(readFileSync(new URL('./appsettings.json', import.meta.url)))
+
+export default defineConfig(() => {
+  const target = settings.BackendUrl
   const proxy = {
     '/api': {
       target,

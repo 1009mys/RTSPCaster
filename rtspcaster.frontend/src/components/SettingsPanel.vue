@@ -3,11 +3,11 @@ import { reactive, ref, watch } from 'vue'
 
 const props = defineProps({ settings: { type: Object, required: true }, mediaMtx: Object, disabled: Boolean })
 const emit = defineEmits(['save', 'check', 'template', 'help'])
-const draft = reactive({ ...props.settings })
+const draft = reactive({ fileLoggingEnabled: true, ...props.settings })
 const dirty = ref(false)
 
 function reset(value = props.settings) {
-  Object.assign(draft, value)
+  Object.assign(draft, { fileLoggingEnabled: true, ...value })
   dirty.value = false
 }
 watch(() => props.settings, (value) => { if (!dirty.value) reset(value) })
@@ -21,6 +21,7 @@ defineExpose({ saved: reset })
       <span class="settings-target">MediaMTX <code>{{ settings.mediaMtxHost }}:{{ settings.mediaMtxPort }}</code></span>
       <span class="connection-state" :class="{ good: mediaMtx?.reachable === true, bad: mediaMtx?.reachable === false }"><span class="dot" aria-hidden="true"></span>{{ mediaMtx?.reachable === true ? '연결됨' : mediaMtx?.reachable === false ? '연결할 수 없음' : '확인 전' }}</span>
       <span v-if="dirty" class="unsaved">저장하지 않은 변경</span>
+      <span class="hint">.log 기록 {{ settings.fileLoggingEnabled === false ? '꺼짐' : '켜짐' }}</span>
       <span class="disclosure-action"><span class="when-closed">설정 펼치기</span><span class="when-open">설정 접기</span><span class="chevron" aria-hidden="true"></span></span>
     </summary>
     <form class="settings-panel" @submit.prevent="emit('save', { ...draft })" @input="dirty = true">
@@ -61,7 +62,11 @@ defineExpose({ saved: reset })
       </fieldset>
 
       <div class="settings-footer">
-        <span class="hint" :class="{ unsaved: dirty }">{{ dirty ? '저장하지 않은 설정이 있습니다. 실시간 갱신 시에도 입력값을 유지합니다.' : '서버 설정과 동기화됨' }}</span>
+        <div class="logging-setting">
+          <label class="check"><input v-model="draft.fileLoggingEnabled" type="checkbox" :disabled="disabled" /> .log 파일 기록</label>
+          <p class="hint">설정 저장 시 즉시 적용 · 다음 실행에도 유지 · 꺼도 기존 파일과 화면 로그는 유지</p>
+          <p class="hint" :class="{ unsaved: dirty }">{{ dirty ? '저장하지 않은 설정이 있습니다. 실시간 갱신 시에도 입력값을 유지합니다.' : '서버 설정과 동기화됨' }}</p>
+        </div>
         <div class="fields">
           <button type="button" :disabled="disabled || !dirty" @click="reset()">변경 취소</button>
           <button type="submit" class="primary" :disabled="disabled || !dirty">설정 저장</button>

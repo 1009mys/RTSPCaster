@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import { formatLog } from '../services/presentation'
+import LogFilesPanel from './LogFilesPanel.vue'
 
 const props = defineProps({ logs: { type: Array, default: () => [] }, channels: { type: Array, default: () => [] } })
 const emit = defineEmits(['copy'])
@@ -43,5 +44,6 @@ watch(follow, scrollToEnd)
       </div>
     </div>
     <div class="log-footer"><span>최근 최대 500개 · 약 1초 간격으로 갱신</span><span>{{ follow ? '새 로그를 자동으로 따라갑니다' : '자동 스크롤 꺼짐 · 이전 로그 확인 중' }}</span></div>
+    <LogFilesPanel @copy="emit('copy', $event)" />
   </section>
 </template>

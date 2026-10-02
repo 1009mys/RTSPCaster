@@ -159,6 +159,9 @@ try
             Assert(response.StatusCode == HttpStatusCode.OK, "remote server hostname allowed without authentication");
         }
         Assert((await Get<ChannelSnapshot[]>(client, "/api/channels")).Length == 0, "isolated empty channel store");
+        Assert((await Get<LogFileList>(client, "/api/log-files")).Files.Length == 0, "missing log folder returns empty list");
+        Assert(!Directory.Exists(Path.Combine(root, "logs")), "listing does not create log directory");
+        await VerifyLogFileApi(client);
         var uploadLimits = await Get<JsonElement>(client, "/api/uploads/limits");
         Assert(uploadLimits.GetProperty("maxUploadBytes").GetInt64() == 1048576, "upload limits reflect configured maximum");
         var settings = new CasterSettings { MediaMtxPort = port, AutoRestartBaseDelaySeconds = 1 };
@@ -224,6 +227,22 @@ try
                 await Task.Delay(50, timeout.Token);
         }
         Assert((await Get<ChannelSnapshot>(client, $"/api/channels/{first.Id}")).HealthSamples[^1].Fps == 30, "stream health samples");
+        await Expect(client, HttpMethod.Put, "/api/settings", HttpStatusCode.OK, settings with { FileLoggingEnabled = false });
+        var recordedFiles = (await Get<LogFileList>(client, "/api/log-files")).Files;
+        Assert(recordedFiles.Length > 0, "enabled streams create backend log files");
+        var recordedSize = recordedFiles.Sum(file => file.Size);
+        var snapshotBefore = await Get<CasterSnapshot>(client, "/api/status");
+        await Task.Delay(350);
+        Assert((await Get<LogFileList>(client, "/api/log-files")).Files.Sum(file => file.Size) == recordedSize, "disable stops appending during active streaming");
+        var snapshotAfter = await Get<CasterSnapshot>(client, "/api/status");
+        Assert(snapshotAfter.Channels.Single(channel => channel.Id == first.Id).HealthSamples[^1].Timestamp > snapshotBefore.Channels.Single(channel => channel.Id == first.Id).HealthSamples[^1].Timestamp,
+            "health collection continues with file logging disabled");
+        var storedLog = await Get<LogFileContent>(client, $"/api/log-files/content?name={recordedFiles[0].Name}");
+        Assert(storedLog.Content.Length > 0, "existing files remain readable when logging disabled");
+        await Expect(client, HttpMethod.Put, "/api/settings", HttpStatusCode.OK, settings);
+        using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+            while ((await Get<LogFileList>(client, "/api/log-files")).Files.Sum(file => file.Size) <= recordedSize)
+                await Task.Delay(50, timeout.Token);
         await Expect(client, HttpMethod.Get, $"/api/channels/{first.Id}/url", HttpStatusCode.OK);
         await Expect(client, HttpMethod.Post, "/api/channels/stop-all", HttpStatusCode.NoContent);
         await WaitState(client, first.Id, StreamStatus.Idle);
@@ -256,6 +275,7 @@ try
         var logs = await Get<LogPage>(client, "/api/logs");
         Assert((await Get<LogPage>(client, $"/api/logs?after={logs.LastId}")).Entries.Length == 0, "log cursor");
         await Expect(client, HttpMethod.Get, "/openapi/v1.json", HttpStatusCode.OK);
+        await Expect(client, HttpMethod.Put, "/api/settings", HttpStatusCode.OK, settings with { FileLoggingEnabled = false });
         await app.StopAsync();
         foreach (var marker in Directory.GetFiles(root, "*.streaming", SearchOption.AllDirectories))
             Assert(Exited(int.Parse(await File.ReadAllTextAsync(marker))), "shutdown stops tracked stream process");
@@ -265,6 +285,14 @@ try
         await app.StartAsync();
         using var client = new HttpClient { BaseAddress = new Uri(app.Urls.Single()) };
         Assert((await Get<CasterSettings>(client, "/api/settings")).MediaMtxPort == port, "settings persist across restart");
+        Assert(!(await Get<CasterSettings>(client, "/api/settings")).FileLoggingEnabled, "file logging disabled setting persists across restart");
+        var previousSize = (await Get<LogFileList>(client, "/api/log-files")).Files.Sum(file => file.Size);
+        client.DefaultRequestHeaders.Add("X-RTSPCaster-Client", "web");
+        await Expect(client, HttpMethod.Post, $"/api/channels/{persistedId}/start", HttpStatusCode.Accepted);
+        await WaitState(client, persistedId, StreamStatus.Streaming);
+        await Task.Delay(350);
+        Assert((await Get<LogFileList>(client, "/api/log-files")).Files.Sum(file => file.Size) == previousSize, "persisted disabled policy applies to streams after restart");
+        await Expect(client, HttpMethod.Post, $"/api/channels/{persistedId}/stop", HttpStatusCode.OK);
         var channel = await Get<ChannelSnapshot>(client, $"/api/channels/{persistedId}");
         Assert(channel.Status == StreamStatus.Idle && channel.RtspPath == "web_001", "channels persist without automatic startup");
         await app.StopAsync();
@@ -277,4 +305,58 @@ finally
     await accepting;
     SqliteConnection.ClearAllPools();
     Directory.Delete(root, recursive: true);
+}
+
+async Task VerifyLogFileApi(HttpClient client)
+{
+    var directory = Path.Combine(root, "logs");
+    Directory.CreateDirectory(directory);
+    var name = "ch999_20260320.log";
+    var text = new string('a', 65535) + string.Concat(Enumerable.Repeat("한글🙂 <script>test</script>\n", 4000));
+    await File.WriteAllTextAsync(Path.Combine(directory, name), text, new UTF8Encoding(false));
+    await File.WriteAllTextAsync(Path.Combine(root, "ch777_20260320.log"), "Windows/private file");
+    await File.WriteAllTextAsync(Path.Combine(directory, "private.txt"), "not a log");
+    var reconstructed = new StringBuilder();
+    long cursor = 0;
+    LogFileContent part;
+    do
+    {
+        part = await Get<LogFileContent>(client, $"/api/log-files/content?name={name}&offset={cursor}");
+        Assert(Encoding.UTF8.GetByteCount(part.Content) <= 65536 && !part.Content.Contains('\ufffd'), "bounded UTF-8 page without split characters");
+        Assert(part.NextOffset > cursor, "file page cursor advances");
+        cursor = part.NextOffset;
+        reconstructed.Append(part.Content);
+    } while (part.HasMore);
+    Assert(reconstructed.ToString() == text, "file pages reconstruct complete Unicode content");
+    var tail = await Get<LogFileContent>(client, $"/api/log-files/content?name={name}");
+    Assert(tail.Offset > 0 && !tail.Content.Contains('\ufffd') && text.EndsWith(tail.Content, StringComparison.Ordinal), "latest page begins on a UTF-8 boundary");
+    await Expect(client, HttpMethod.Get, $"/api/log-files/content?name={name}&offset=-1", HttpStatusCode.BadRequest);
+    await Expect(client, HttpMethod.Get, $"/api/log-files/content?name={name}&offset=65536", HttpStatusCode.BadRequest);
+    await Expect(client, HttpMethod.Get, $"/api/log-files/content?name={name}&offset=99999999", HttpStatusCode.Conflict);
+    await Expect(client, HttpMethod.Get, "/api/log-files/content?name=..%2Fch777_20260320.log", HttpStatusCode.BadRequest);
+    await Expect(client, HttpMethod.Get, "/api/log-files/content?name=ch777_20260320.log", HttpStatusCode.NotFound);
+    await Expect(client, HttpMethod.Get, "/api/log-files/content?name=ch999_20260320.log%3Asecret", HttpStatusCode.BadRequest);
+    await Expect(client, HttpMethod.Get, "/api/log-files?skip=-1", HttpStatusCode.BadRequest);
+    for (var i = 0; i < 101; i++) await File.WriteAllTextAsync(Path.Combine(directory, $"ch{i}_20260101.log"), "");
+    var firstPage = await Get<LogFileList>(client, "/api/log-files");
+    Assert(firstPage.Files.Length == 100 && firstPage.HasMore && firstPage.Files.All(file => file.Name.EndsWith(".log")), "file list has bounded pages and excludes unrelated files");
+    var secondPage = await Get<LogFileList>(client, "/api/log-files?skip=100");
+    Assert(secondPage.Files.Length == 2 && !secondPage.HasMore, "remaining file list page");
+    var empty = await Get<LogFileContent>(client, "/api/log-files/content?name=ch0_20260101.log&offset=0");
+    Assert(empty.Content == "" && !empty.HasMore, "empty file is readable");
+    var link = Path.Combine(directory, "ch888_20260320.log");
+    var linked = false;
+    try { File.CreateSymbolicLink(link, Path.Combine(root, "ch777_20260320.log")); linked = true; }
+    catch (UnauthorizedAccessException) { Console.WriteLine("SKIP: symlink creation requires OS permission"); }
+    catch (IOException) { Console.WriteLine("SKIP: symlink creation is unavailable on this filesystem"); }
+    if (linked)
+    {
+        await Expect(client, HttpMethod.Get, "/api/log-files/content?name=ch888_20260320.log", HttpStatusCode.Forbidden);
+        Assert(!(await Get<LogFileList>(client, "/api/log-files")).Files.Any(file => file.Name == "ch888_20260320.log"), "symbolic link omitted from file list");
+        File.Delete(link);
+    }
+    using (var response = await client.GetAsync($"/api/log-files/content?name={name}"))
+        Assert(response.Headers.CacheControl?.NoStore == true, "file responses are not cached");
+    Directory.Delete(directory, recursive: true);
+    File.Delete(Path.Combine(root, "ch777_20260320.log"));
 }

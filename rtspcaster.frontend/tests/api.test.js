@@ -23,7 +23,7 @@ test('status is a same-origin GET without a body', async () => {
 })
 
 test('settings sends full JSON with required browser policy header', async () => {
-  const settings = { mediaMtxHost: 'localhost', mediaMtxPort: 8554, autoRestartEnabled: true }
+  const settings = { mediaMtxHost: 'localhost', mediaMtxPort: 8554, autoRestartEnabled: true, fileLoggingEnabled: false }
   const captured = respond(settings)
   assert.deepEqual(await api.settings(settings), settings)
   assert.equal(captured().method, 'PUT')
@@ -107,4 +107,29 @@ test('caller cancellation is propagated', async () => {
     return new Response('{}')
   }
   await assert.rejects(request('/status', { signal: controller.signal }), { name: 'AbortError' })
+})
+
+test('log file queries use bounded page cursors and encode names as query values', async () => {
+  const captured = respond({ files: [], hasMore: false })
+  await api.logFiles(100)
+  assert.equal(captured().url, '/api/log-files?skip=100')
+  assert.equal(captured().method, 'GET')
+  await api.logFileContent('ch1_20260320.log', 0)
+  assert.equal(captured().url, '/api/log-files/content?name=ch1_20260320.log&offset=0')
+  await api.logFileContent('ch1_20260320.log')
+  assert.equal(captured().url, '/api/log-files/content?name=ch1_20260320.log')
+  await api.logFileContent('../secret&offset=0', 65535)
+  const url = new URL(captured().url, 'http://localhost')
+  assert.equal(url.searchParams.get('name'), '../secret&offset=0')
+  assert.equal(url.searchParams.get('offset'), '65535')
+})
+
+test('log file requests propagate cancellation and missing-file errors', async () => {
+  const controller = new AbortController()
+  controller.abort()
+  globalThis.fetch = async (_url, options) => { options.signal.throwIfAborted() }
+  await assert.rejects(api.logFiles(0, controller.signal), { name: 'AbortError' })
+  await assert.rejects(api.logFileContent('ch1_20260320.log', null, controller.signal), { name: 'AbortError' })
+  respond({ detail: '로그 파일을 찾을 수 없습니다.' }, 404)
+  await assert.rejects(api.logFileContent('ch1_20260320.log'), /로그 파일을 찾을 수 없습니다/)
 })

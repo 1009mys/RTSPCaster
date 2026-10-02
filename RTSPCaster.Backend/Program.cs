@@ -1,6 +1,7 @@
 
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.Extensions.Configuration.EnvironmentVariables;
 using RTSPCaster.Backend.Infrastructure;
 using RTSPCaster.Backend.Services;
 using RTSPCaster.Services;
@@ -16,13 +17,17 @@ public class Program
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
             Args = args,
-            ApplicationName = typeof(Program).Assembly.FullName
+            ApplicationName = typeof(Program).Assembly.FullName,
+            ContentRootPath = AppContext.BaseDirectory
         });
-        if (string.IsNullOrWhiteSpace(builder.Configuration["urls"])
-            && string.IsNullOrWhiteSpace(builder.Configuration["HTTP_PORTS"])
-            && string.IsNullOrWhiteSpace(builder.Configuration["HTTPS_PORTS"]))
-            builder.WebHost.UseUrls("http://0.0.0.0:5058");
+        foreach (var source in builder.Configuration.Sources.OfType<EnvironmentVariablesConfigurationSource>().ToArray())
+            builder.Configuration.Sources.Remove(source);
+        builder.WebHost.UseUrls(builder.Configuration["Urls"] ?? "http://0.0.0.0:5058");
         var options = builder.Configuration.GetSection("Backend").Get<BackendOptions>() ?? new();
+        try { ApiValidation.Host(options.MediaMtxHost); }
+        catch (ApiException exception) { throw new InvalidOperationException("Backend:MediaMtxHost is invalid.", exception); }
+        if (options.MediaMtxPort is < 1 or > 65535)
+            throw new InvalidOperationException("Backend:MediaMtxPort must be between 1 and 65535.");
         if (options.MaxUploadBytes < 1 || options.MaxUploadBytes > 512L * 1024 * 1024 * 1024)
             throw new InvalidOperationException("Backend:MaxUploadBytes must be between 1 byte and 512 GiB.");
         foreach (var origin in options.AllowedOrigins)
@@ -35,6 +40,7 @@ public class Program
         builder.Services.Configure<FormOptions>(form => form.MultipartBodyLengthLimit = options.MaxUploadBytes);
         builder.Services.AddSingleton(options);
         builder.Services.AddSingleton<BackendStorage>();
+        builder.Services.AddSingleton<BackendLogFiles>();
         builder.Services.AddSingleton(provider => new SqliteService(provider.GetRequiredService<BackendStorage>().DatabasePath));
         builder.Services.AddSingleton<ChildProcessTracker>();
         builder.Services.AddSingleton(provider =>

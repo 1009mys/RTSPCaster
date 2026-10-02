@@ -75,6 +75,8 @@ async function uploadFiles(files, signal, { onResult = () => {}, onProgress = ()
 
 export const api = {
   status: (signal) => request('/status', { signal }),
+  logFiles: (skip = 0, signal) => request(`/log-files?skip=${skip}`, { signal }),
+  logFileContent: (name, offset = null, signal) => request(`/log-files/content?${new URLSearchParams({ name, ...(offset == null ? {} : { offset: String(offset) }) })}`, { signal }),
   settings: (body) => request('/settings', { method: 'PUT', body }),
   check: () => request('/mediamtx/check', { method: 'POST' }),
   templateHelp: () => request('/rtsp-template/help'),

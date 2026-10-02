@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 
@@ -6,10 +5,17 @@ namespace RTSPCaster.Services;
 
 public sealed class StreamLogWriter
 {
-    private readonly ConcurrentDictionary<int, object> _channelLocks = new();
+    private readonly object _sync = new();
+    private bool _enabled;
     private static readonly Encoding LogEncoding = new UTF8Encoding(false);
 
     public string DirectoryPath { get; }
+
+    public bool Enabled
+    {
+        get { lock (_sync) return _enabled; }
+        set { lock (_sync) _enabled = value; }
+    }
 
     public StreamLogWriter(string? directoryPath = null)
     {
@@ -18,8 +24,9 @@ public sealed class StreamLogWriter
 
     public void Write(int channelId, string source, string line, DateTimeOffset? timestamp = null)
     {
-        lock (_channelLocks.GetOrAdd(channelId, static _ => new object()))
+        lock (_sync)
         {
+            if (!_enabled) return;
             var time = timestamp ?? DateTimeOffset.Now;
             var fileName = FormattableString.Invariant($"ch{channelId}_{time:yyyyMMdd}.log");
             Directory.CreateDirectory(DirectoryPath);

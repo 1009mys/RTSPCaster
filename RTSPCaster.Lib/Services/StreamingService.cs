@@ -51,6 +51,11 @@ public class StreamingService : IDisposable
 
     public string FfmpegPath { get; set; } = ToolLocator.Find(ToolLocator.ExecutableName("ffmpeg")) ?? ToolLocator.ExecutableName("ffmpeg");
     public bool AutoRestartEnabled { get; set; } = true;
+    public bool FileLoggingEnabled
+    {
+        get => _logWriter.Enabled;
+        set => _logWriter.Enabled = value;
+    }
     public int MaxAutoRestartAttempts { get; set; } = 3;
     public TimeSpan AutoRestartBaseDelay { get; set; } = TimeSpan.FromSeconds(2);
     public TimeSpan AutoRestartAttemptResetThreshold { get; set; } = TimeSpan.FromSeconds(30);

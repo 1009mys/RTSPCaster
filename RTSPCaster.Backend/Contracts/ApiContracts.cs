@@ -9,6 +9,7 @@ public sealed record CasterSettings
     [Range(1, 65535)] public int MediaMtxPort { get; init; } = 8554;
     [Required, StringLength(1024)] public string BulkRtspTemplate { get; init; } = "rtsp://{host}:{port}/stream_{index}";
     public bool AutoRestartEnabled { get; init; } = true;
+    public bool FileLoggingEnabled { get; init; }
     [Range(0, 20)] public int MaxAutoRestartAttempts { get; init; } = 3;
     [Range(1, 120)] public int AutoRestartBaseDelaySeconds { get; init; } = 2;
     [Range(5, 3600)] public int AutoRestartResetThresholdSeconds { get; init; } = 30;
@@ -29,6 +30,10 @@ public sealed record ChannelSnapshot(int Id, string Name, string RtspPath, strin
     double ConversionProgress, bool OperationInProgress, HealthSample[] HealthSamples);
 public sealed record LogEntry(long Id, DateTime Timestamp, int? ChannelId, string Message);
 public sealed record LogPage(long LastId, LogEntry[] Entries);
+public sealed record LogFileEntry(string Name, long Size, DateTime LastWriteTimeUtc);
+public sealed record LogFileList(LogFileEntry[] Files, bool HasMore);
+public sealed record LogFileContent(string Name, long Size, DateTime LastWriteTimeUtc,
+    long Offset, long NextOffset, bool HasMore, string Content);
 public sealed record MediaMtxConnection(string Host, int Port, bool? Reachable, DateTime? CheckedAt);
 public sealed record CasterSnapshot(CasterSettings Settings, MediaMtxConnection MediaMtx,
     ChannelSnapshot[] Channels, LogPage Logs);

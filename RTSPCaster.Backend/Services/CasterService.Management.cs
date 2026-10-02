@@ -16,6 +16,7 @@ public sealed partial class CasterService
 
     private void ApplyRestartPolicy()
     {
+        _streaming.FileLoggingEnabled = _settings.FileLoggingEnabled;
         _streaming.AutoRestartEnabled = _settings.AutoRestartEnabled;
         _streaming.MaxAutoRestartAttempts = _settings.MaxAutoRestartAttempts;
         _streaming.AutoRestartBaseDelay = TimeSpan.FromSeconds(_settings.AutoRestartBaseDelaySeconds);

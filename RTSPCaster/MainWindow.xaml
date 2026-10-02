@@ -184,7 +184,15 @@
 
             <GridSplitter Grid.Row="1" Height="4" HorizontalAlignment="Stretch" Background="Gray"/>
 
-            <GroupBox Grid.Row="2" Header="로그">
+            <GroupBox Grid.Row="2">
+                <GroupBox.Header>
+                    <WrapPanel VerticalAlignment="Center">
+                        <TextBlock Text="로그" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                        <CheckBox Content=".log 파일 기록" IsChecked="{Binding FileLoggingEnabled}" VerticalAlignment="Center" Margin="0,0,8,0"
+                                  ToolTip="저장하면 즉시 적용되며 다음 실행에도 유지됩니다. 꺼도 화면 로그와 기존 파일은 유지됩니다."/>
+                        <Button Content="저장" Command="{Binding SaveFileLoggingCommand}" Padding="8,2" ToolTip="파일 기록 설정 저장"/>
+                    </WrapPanel>
+                </GroupBox.Header>
                 <ListBox x:Name="LogList" ItemsSource="{Binding Logs}" FontFamily="Consolas" FontSize="12"
                          ScrollViewer.HorizontalScrollBarVisibility="Auto" SelectionMode="Extended"
                          ScrollViewer.ScrollChanged="LogList_ScrollChanged">

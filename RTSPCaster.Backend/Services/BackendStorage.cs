@@ -7,6 +7,8 @@ public sealed class BackendOptions
     public string? DataDirectory { get; set; }
     public string? FfmpegPath { get; set; }
     public string? FfprobePath { get; set; }
+    public string MediaMtxHost { get; set; } = "127.0.0.1";
+    public int MediaMtxPort { get; set; } = 8554;
     public long MaxUploadBytes { get; set; } = 2L * 1024 * 1024 * 1024;
     public string[] AllowedOrigins { get; set; } = [];
 }
@@ -23,9 +25,9 @@ public sealed class BackendStorage : IDisposable
 
     public BackendStorage(BackendOptions options)
     {
-        Root = Path.GetFullPath(string.IsNullOrWhiteSpace(options.DataDirectory)
+        Root = string.IsNullOrWhiteSpace(options.DataDirectory)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RTSPCaster.Backend")
-            : options.DataDirectory);
+            : Path.GetFullPath(options.DataDirectory, AppContext.BaseDirectory);
         Directory.CreateDirectory(Root);
         _instanceLock = new FileStream(Path.Combine(Root, "backend.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         Directory.CreateDirectory(MediaDirectory);
